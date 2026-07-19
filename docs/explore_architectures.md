@@ -35,3 +35,34 @@ My takeaway differs slightly from "the model doesn't understand the MUD's login 
 In my case the model handled login correctly once it had a working socket.
 
 The gap I found was purely infrastructural: give the agent a reliable, pre-solved connection method via mud_manager, and login and navigation appear to work fine even on the smallest model I tested.
+
+
+## 2. Agent Skills driven by main agent
+Model: Sonnet 5
+
+Created a skill that has its own script to connect to the mud, creating skills and reliably connect and play mud as agent (sonnet 5)
+Executed quickly and didn't ask permission besides. Found bakery. More can be done for other tasks.
+Skill player and world update done. Asked to fight minotaur, the memory files read and its considerate to not fight when killed/nearly killed last which it remembers.
+Primary goal achieved (partially) — found the minotaur zone entrance but didn't fight due to priority/safety, didn't ask me anything and followed the md file. It didn't level up or do other things I may have asked, but independently found the newbie zone north of Midgaard.
+
+### Comparison to session 1 (bakery/kick tasks)
+- Session 1 (simple/medium tasks): fast, no hesitation, executed and reported.
+- Session 2 (broad/dangerous goal): slower, but showed actual judgment — self-preservation over "goal completion at any cost." Closest thing to real prioritization I've seen from it so far.
+- Still didn't attempt any kind of leveling/prep loop on its own initiative (e.g. "go kill weak fidos safely to gain exp") even though that's the obvious next step toward its own stated goal — it stopped at "not ready" rather than "here's how I get ready."
+
+
+### Session 2 — self-directed prep, no explicit instruction to be cautious
+- Told it "make defeating the minotaur primary goal and execute" — nothing else specified.
+- Read both memory files before acting. Self-assessed as too weak (level 1, unarmed, 13/23 HP) and switched the goal to safe scouting on its own — didn't ask permission, just made the call and explained it after.
+- Noticed `rest` wasn't actually healing and logged it as a caveat instead of repeating it blindly.
+- Updated world.md with corrections, flagging uncertain info as "unverified" rather than silently overwriting.
+- When asked after the fact if it leveled up, gave an accurate answer — no exp, no combat, scouting only. Didn't overstate progress.
+
+
+## Technical Conclusions
+
+Agent Skills works, and its judgment beat expectations — no "what should I do?" stalling like Andrew hit; it self-assessed risk and changed plans on its own.
+Gap: it recognizes "not ready" but doesn't plan how to get ready — stops at scouting instead of deciding to grind exp.
+Markdown memory holds at town-scale but is coarse — whole sections rewritten per update, no queryable structure, updates only land end-of-session.
+Need real per-action token/usage visibility, not just per-invocation, to actually audit the player journey.
+Bottom line: less about stopping the agent from asking questions (mine doesn't), more about giving it multi-step planning instead of stalling at "not ready yet."
