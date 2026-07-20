@@ -15,13 +15,16 @@ history here, that's what the log below is for._
 
 - Level: 1 (Swordpupil)
 - Class: Warrior
-- HP / Mana / Move: 13/100/69 (max 23/100/85) — resting, recovering from a
-  near-death flee (see log)
-- Location: The Levee (see `world.md` for the map)
+- Sex: male (confirmed via `look self` → "You see nothing special about
+  him.")
+- HP / Mana / Move: 23/100/74 (max 23/100/85) — fully healed, not resting
+- Location: Main Street (the west end, near the Guild of Magic Users / city
+  gate — see `world.md`, this is a *different* room from the Main Street
+  by the Armory/Bakery that shares the same name)
 - Gold: 0
 - Inventory: empty; no equipment worn
 - Exp: 1 (need 1999 more for level 2)
-- Last updated: 2026-07-19
+- Last updated: 2026-07-20
 
 ## Goals
 
@@ -85,3 +88,15 @@ entries short — this is a log, not a transcript._
   Dark Alley At The Levee, then rested. Ended the session resting at 13/23
   HP, 1 exp, 0 gold, at The Levee. Weapon shop, guildmaster/practice
   trainer, and a working water source were not found this session.
+- 2026-07-20: Logged in fully healed (23/100/85 max, unarmed/unarmored, 0
+  gold, 1 exp — otherwise unchanged). Reconfirmed class (Warrior) and sex
+  (male, via `look self`). Session goal was to find the Warrior guild:
+  started the login inside the newbie zone passage (not at The Levee as
+  last logged — position apparently didn't persist), backtracked south
+  through the Great Field/Temple/Temple Square/Market Square, then west
+  along Main Street to its far west end. Found the Guild of Magic Users and
+  a magic shop there (see `world.md`) — not the Warrior guild. Stopped
+  after 11 successful room moves per the session's move budget; Warrior
+  guild location is still unknown. Also reconfirmed the Temple's full exit
+  list (n/e/s/w/d) and that its Reading Room (w) and donation room (e) are
+  visible but still unentered.
