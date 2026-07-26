@@ -130,3 +130,7 @@ ruby -e "require 'openssl'; puts OpenSSL::X509::DEFAULT_CERT_FILE"
 ```sh
 ./week1_baseline/bin/04_api_client 
 ```
+
+## Review Considerations
+- In the ollama.rb backend we harcoded the local address this should have been a env var that could default to the default ollama path, but we are going to keep it harcoded to avoid having to uplift all layers of our code.
+- It looks like some generated code did not adhere to the stateless classes, there is some code that should be stateless eg. Client but will keep it the same for now.

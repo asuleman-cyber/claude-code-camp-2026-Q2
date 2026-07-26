@@ -12,6 +12,7 @@ module Boukensha
       @tools        = {}
     end
 
+    # This isn'
     def register_tool(tool)
       @tools[tool.name] = tool
     end

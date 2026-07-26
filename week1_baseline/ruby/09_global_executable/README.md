@@ -6,30 +6,39 @@ Package BOUKENSHA as a gem so the `boukensha` command works from anywhere on you
 
 - `boukensha.gemspec` — declares the gem: name, version, which files to include, and the `bin/boukensha` executable
 - `bin/boukensha` — the shebang script that becomes the global command
-- `lib/boukensha_loader.rb` — resolves *which step folder* to load from, then boots the REPL
+- `lib/boukensha_loader.rb` — resolves the step folder and runtime config directory, then boots the REPL
 - `lib/boukensha.rb` + `lib/boukensha/` — step 7's lib, bundled as the default
 
 ## Install
 
 ```bash
-cd 08_global_executable
+cd 09_global_executable
 gem build boukensha.gemspec
-gem install boukensha-0.1.0.gem
+gem install boukensha-0.9.0.gem
 ```
 
 After that, `boukensha` is on your `$PATH` and works from any directory.
 
-## Switching steps with BOUKENSHA_PATH
+## Configuring the global executable
 
-The loader resolves in this order:
+`~/.boukensharc` is a YAML file that can configure both the implementation to
+load and the directory containing `.env`, `settings.yaml`, and `prompts/`:
 
-| Priority | Source | Example |
-|----------|--------|---------|
-| 1 | `BOUKENSHA_PATH` env var | `BOUKENSHA_PATH=~/Sites/boukensha/07_the_repl_loop boukensha` |
-| 2 | `~/.boukensharc` file | `echo ~/Sites/boukensha/07_the_repl_loop > ~/.boukensharc` |
-| 3 | Bundled default | just run `boukensha` |
+```yaml
+boukensha_path: ~/Sites/boukensha/08_the_repl_loop
+boukensha_dir: ~/Sites/boukensha/.boukensha
+```
+
+Each value is resolved independently:
+
+| Setting | First priority | Second priority | Default |
+|---------|----------------|-----------------|---------|
+| Implementation | `BOUKENSHA_PATH` | `boukensha_path` in `~/.boukensharc` | Bundled implementation |
+| Runtime config | `BOUKENSHA_DIR` | `boukensha_dir` in `~/.boukensharc` | `~/.boukensha` |
 
 `BOUKENSHA_PATH` must point to a step folder that contains `lib/boukensha.rb`.
+The original single-path `.boukensharc` format is still accepted and is treated
+as `boukensha_path`.
 
 ## Running a specific step
 

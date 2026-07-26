@@ -64,7 +64,7 @@ end
 ## Run Example
 
 ```sh
-./week1_baseline/bin/07_the_run_dsl 
+./bin/ruby/07_the_run_dsl 
 ```
 
 The example registers two tools (`read_file`, `list_directory`) and asks the agent to list the directory then read `lib/boukensha.rb`. The logger prints each phase to stdout and writes a session JSONL file under `.boukensha/sessions`.

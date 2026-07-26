@@ -25,7 +25,7 @@ Registry: "looking up "move" in the tool table"
 Registry: "Found it now calling the block with the provided args"
 Registry: "Here's the result"
 Agent: "Thanks buddy"
-Registry: "Thats why you pay me the big tokes"
+Registry: "Thats why you pay me the big tokens"
 ```
 
 ## Boukensha::Registry
@@ -75,3 +75,12 @@ This translation is a real gotcha in production harnesses, BOUKENSHA makes it vi
 ```sh
 ./week1_baseline/bin/01_the_registry 
 ```
+
+## Considerations
+
+We now register tools with the Registry but our code still has direct registration and tools in context. This likely should have been reworked.
+
+Checking the final baseline example, we did correct the issue.
+The context should have reference to tools[] its currently using, and the full table of tools registered should live on the Registry. 
+
+We'll correct this manually in a future step and we will leave things place.

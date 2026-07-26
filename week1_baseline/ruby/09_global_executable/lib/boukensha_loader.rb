@@ -1,55 +1,76 @@
-# BoukenshaLoader resolves which step folder to load from, then boots the REPL.
+# BoukenshaLoader resolves which step folder and config directory to use, then
+# boots the REPL.
 #
-# Resolution order:
-#   1. BOUKENSHA_PATH environment variable (selects which *step* lib to load)
-#   2. ~/.boukensharc  (a file containing a single path)
-#   3. The lib/ directory bundled inside this gem (step 8 — the latest release)
-#
-# Config directory (settings.yaml, .env, system.md) is separate:
-#   BOUKENSHA_DIR=~/.boukensha  (default, set in env to override)
+# Each setting is resolved independently in this order:
+#   1. BOUKENSHA_PATH / BOUKENSHA_DIR environment variable
+#   2. boukensha_path / boukensha_dir in ~/.boukensharc
+#   3. The bundled lib / ~/.boukensha default
 #
 # Examples:
 #   boukensha                                                              # uses bundled lib + ~/.boukensha
 #   BOUKENSHA_PATH=~/Sites/boukensha/04_api_client boukensha              # loads step 4
 #   BOUKENSHA_DIR=~/projects/mybot/.boukensha boukensha                   # custom config dir
-#   echo ~/Sites/boukensha/08_the_repl_loop > ~/.boukensharc && boukensha # permanent step default
+require "yaml"
+
 module BoukenshaLoader
   # Absolute path to this gem's own bundled boukensha lib.
   BUNDLED_LIB = File.expand_path("../boukensha.rb", __FILE__)
 
+  def self.rc_file
+    File.expand_path("~/.boukensharc")
+  end
+
+  def self.load_rc
+    return {} unless File.exist?(rc_file)
+
+    parsed = YAML.safe_load(
+      File.read(rc_file),
+      permitted_classes: [],
+      aliases: false
+    )
+
+    case parsed
+    when Hash
+      parsed
+    when String
+      # Backward compatibility with the original single-path format.
+      { "boukensha_path" => parsed }
+    when nil
+      {}
+    else
+      abort "boukensha: #{rc_file} must contain a YAML mapping"
+    end
+  rescue Psych::SyntaxError => e
+    abort "boukensha: invalid YAML in #{rc_file}: #{e.message}"
+  end
+
+  def self.expand_rc_path(path)
+    return nil unless path.is_a?(String)
+    return nil if path.strip.empty?
+
+    File.expand_path(path, File.dirname(rc_file))
+  end
+
   def self.resolve
-    # 1. Env var wins.
-    if ENV["BOUKENSHA_PATH"]
-      dir  = File.expand_path(ENV["BOUKENSHA_PATH"])
-      main = File.join(dir, "lib", "boukensha.rb")
-      return main if File.exist?(main)
+    rc = load_rc
 
-      abort <<~MSG
-        boukensha: BOUKENSHA_PATH is set but no lib/boukensha.rb found at:
-               #{dir}
-               Make sure BOUKENSHA_PATH points to a step folder, e.g.:
-               BOUKENSHA_PATH=~/Sites/boukensha/07_the_repl_loop boukensha
-      MSG
-    end
+    # Apply this before requiring the selected implementation. An explicit
+    # environment variable always wins over the rc file.
+    rc_config_dir = expand_rc_path(rc["boukensha_dir"])
+    ENV["BOUKENSHA_DIR"] = rc_config_dir if !ENV["BOUKENSHA_DIR"] && rc_config_dir
 
-    # 2. ~/.boukensharc
-    rc = File.expand_path("~/.boukensharc")
-    if File.exist?(rc)
-      dir  = File.read(rc).strip
-      unless dir.empty?
-        main = File.join(File.expand_path(dir), "lib", "boukensha.rb")
-        return main if File.exist?(main)
+    source = ENV["BOUKENSHA_PATH"] || expand_rc_path(rc["boukensha_path"])
+    return BUNDLED_LIB unless source
 
-        abort <<~MSG
-          boukensha: ~/.boukensharc points to #{dir}
-                 but no lib/boukensha.rb was found there.
-                 Update ~/.boukensharc or remove it to use the bundled default.
-        MSG
-      end
-    end
+    dir = File.expand_path(source)
+    main = File.join(dir, "lib", "boukensha.rb")
+    return main if File.exist?(main)
 
-    # 3. Bundled default.
-    BUNDLED_LIB
+    abort <<~MSG
+      boukensha: no lib/boukensha.rb found at:
+             #{dir}
+             Check BOUKENSHA_PATH or #{rc_file}.
+    MSG
   end
 
   def self.load_and_start_repl

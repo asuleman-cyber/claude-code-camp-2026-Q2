@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Read(//c/Users/Administrator/VSCode Projects/claude-code-camp-2026-Q2/**)",
+      "Read(//c/Users/Administrator/.claude/**)"
+    ]
+  }
+}

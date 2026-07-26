@@ -10,6 +10,8 @@ module Boukensha
   #
   # Built-in commands (not sent to the agent):
   #   /help    print the command list
+  #   /quiet   suppress detailed logging
+  #   /loud    re-enable logging
   #   /clear   wipe conversation history (tools stay registered)
   #   /exit    leave the REPL
   #   /quit    alias for /exit
@@ -18,6 +20,8 @@ module Boukensha
 
     HELP = <<~HELP
       Commands:
+        /quiet   suppress logging output
+        /loud    re-enable logging output
         /clear   wipe conversation history (tools stay)
         /exit    leave the REPL
         /help    show this message
@@ -25,7 +29,7 @@ module Boukensha
 
     attr_reader :logger, :context, :model, :version
 
-    def initialize(context:, registry:, builder:, client:, logger:, config_dir: nil, provider: nil, model: nil, version: nil, api_key: nil, mud: nil, task_settings: nil, max_iterations: nil, max_output_tokens: nil)
+    def initialize(context:, registry:, builder:, client:, logger:, config_dir: nil, provider: nil, model: nil, version: nil, api_key: nil, servers: nil, task_settings: nil, max_iterations: nil, max_output_tokens: nil)
       @context    = context
       @registry   = registry
       @builder    = builder
@@ -39,7 +43,7 @@ module Boukensha
       @model      = model
       @version    = version
       @api_key    = api_key
-      @mud        = mud
+      @servers    = servers
       @turn       = 0
       @output_cb  = nil
     end
@@ -57,7 +61,7 @@ module Boukensha
       config_exists = @config_dir && Dir.exist?(@config_dir)
       config_line   = config_exists ? @config_dir : "#{@config_dir || "(default)"}  ✗ directory not found"
       ver           = @version || "?.?.?"
-      mud_stat      = mud_status_string
+      servers_stat  = servers_status_string
 
       <<~BANNER
 
@@ -66,8 +70,9 @@ module Boukensha
         ╚══════════════════════════════════════╝
           config:    #{config_line}
           provider:  #{provider_line}
-          mud:       #{mud_stat}
+          servers:   #{servers_stat}
 
+          /quiet or /loud   toggle logging
           /clear           reset conversation history
           /exit or /quit    leave the REPL
 
@@ -83,6 +88,14 @@ module Boukensha
         :quit
       when "/help"
         output(HELP)
+        :command
+      when "/quiet"
+        Boukensha.quiet!
+        output("(logging suppressed — type /loud to re-enable)")
+        :command
+      when "/loud"
+        Boukensha.loud!
+        output("(logging enabled)")
         :command
       when "/clear"
         @context.clear_messages!
@@ -150,35 +163,14 @@ module Boukensha
       end
     end
 
-    # Build the mud status string shown in the banner.
-    # Only checks TCP reachability — the tool session auto-connects at startup
-    # (in Mud.register), so probing login here would cause a double-login.
-    def mud_status_string
-      return "(not configured)" unless @mud
+    # Build the MCP servers line shown in the banner. Every tool the agent has
+    # came from one of these, so this doubles as "what can I actually do?".
+    # No probing needed: a server that answers tools/list is already connected,
+    # and one that didn't is either absent here or took the agent down at boot.
+    def servers_status_string
+      return "(none configured — the agent has no tools)" if @servers.nil? || @servers.empty?
 
-      host     = @mud[:host] || "localhost"
-      port     = @mud[:port] || 4000
-      name     = @mud[:name]
-      password = @mud[:password]
-
-      "#{host}:#{port}  #{probe_mud(host, port, name, password)}"
-    end
-
-    def probe_mud(host, port, name, password)
-      require "socket"
-      require "timeout"
-
-      # TCP reachability only — the tool session auto-connects at startup,
-      # so we don't probe login here (that would cause a double-login on boot).
-      begin
-        Timeout.timeout(3) { TCPSocket.new(host, port).close }
-      rescue StandardError
-        return "✗ not reachable"
-      end
-
-      name && !name.to_s.strip.empty? ? "(Reachable)" : "(Reachable, no credentials)"
-    rescue StandardError => e
-      "✗ probe error: #{e.message}"
+      @servers.map { |name, count| "#{name} (#{count})" }.join("  ")
     end
   end
 end
