@@ -3,5 +3,11 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR/../../.."
 
+if [ -x "$REPO_ROOT/.venv/Scripts/python.exe" ]; then
+  PYTHON="$REPO_ROOT/.venv/Scripts/python.exe"
+else
+  PYTHON="$REPO_ROOT/.venv/bin/python"
+fi
+
 cd "$SCRIPT_DIR/../../python/00_config"
-"$REPO_ROOT/.venv/bin/python" examples/example.py
+"$PYTHON" examples/example.py
