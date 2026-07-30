@@ -6,6 +6,7 @@
 .env.local
 
 # Python virtualenv (shared at repo root across week1_baseline/python/* steps)
+# WSL-backed; PowerShell forwards into it automatically (see $PROFILE / .envrc)
 .venv/
 
 # Python bytecode cache

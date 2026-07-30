@@ -5,6 +5,21 @@ module Boukensha
     class OpenAI < Base
       BASE_URL = "https://api.openai.com/v1/chat/completions"
       MODELS = {
+        "gpt-5.6-sol" => {
+          context_window: 1_000_000,
+          cost_per_million: { input: 5.0, output: 30.0 },
+          usage_unit: :tokens
+        },
+        "gpt-5.6-terra" => {
+          context_window: 1_000_000,
+          cost_per_million: { input: 2.0, output: 12.0 },
+          usage_unit: :tokens
+        },
+        "gpt-5.6-luna" => {
+          context_window: 1_000_000,
+          cost_per_million: { input: 0.20, output: 1.20 },
+          usage_unit: :tokens
+        },
         "gpt-5.5" => {
           context_window: 1_000_000,
           cost_per_million: { input: 5.0, output: 30.0 },

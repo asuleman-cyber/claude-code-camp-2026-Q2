@@ -1,11 +1,17 @@
 tasks:
   player:
-    provider: anthropic        # provider name (string)
-    model: claude-haiku-4-5
+    provider: anthropic
+    model: claude-haiku-4-5  
+    #provider: openai
+    #model: gpt-5.5
+    #provider: gemini
+    #model: gemini-3.5-flash
+    #provider: ollama_cloud
+    #model: gemma4:31b-cloud
     prompt_override:
       system: true
 mud:
   host: localhost
   port: 4000
-  username: player
+  username: dummy
   password: helloworld
