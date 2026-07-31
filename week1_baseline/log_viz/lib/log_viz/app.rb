@@ -11,9 +11,80 @@ module LogViz
       File.expand_path("../../../../.boukensha/sessions", __dir__)
     }
 
+    PER_PAGE = 25
+
     helpers do
       def session_paths
         Dir.glob(File.join(settings.sessions_dir, "*.jsonl")).sort.reverse
+      end
+
+      # HTML-attribute-safe escaping (covers quotes, unlike Ansi.escape_html)
+      # for reflecting request params like the search box's `q` back into HTML.
+      def h(text)
+        Rack::Utils.escape_html(text.to_s)
+      end
+
+      # ---- index page: filter / sort / paginate ---------------------------
+      def task_text(session)
+        names = session.task_names
+        names.any? ? names.join(" ") : session.task.to_s
+      end
+
+      def filtered_sessions(sessions)
+        q     = params[:q].to_s.strip.downcase
+        model = params[:model].to_s.strip
+
+        sessions = sessions.select { |s| s.id.downcase.include?(q) || task_text(s).downcase.include?(q) } unless q.empty?
+        sessions = sessions.select { |s| s.response_models.include?(model) } unless model.empty?
+        sessions
+      end
+
+      def current_sort_key
+        %w[cost tokens iterations].include?(params[:sort]) ? params[:sort] : "started_at"
+      end
+
+      def current_dir
+        params[:dir] == "asc" ? "asc" : "desc"
+      end
+
+      def sort_sessions(sessions)
+        sorted = case current_sort_key
+                 when "cost"       then sessions.sort_by { |s| s.estimated_cost || -1 }
+                 when "tokens"     then sessions.sort_by { |s| s.total_input_tokens + s.total_output_tokens }
+                 when "iterations" then sessions.sort_by { |s| s.iteration_count }
+                 else                   sessions.sort_by { |s| s.started_at.to_s }
+                 end
+        current_dir == "asc" ? sorted : sorted.reverse
+      end
+
+      def paginate(sessions)
+        total_pages = [(sessions.length.to_f / PER_PAGE).ceil, 1].max
+        page        = params[:page].to_i
+        page        = 1 if page < 1
+        page        = total_pages if page > total_pages
+        offset      = (page - 1) * PER_PAGE
+        { items: sessions.slice(offset, PER_PAGE) || [], page: page, total_pages: total_pages }
+      end
+
+      def model_options(sessions)
+        sessions.flat_map(&:response_models).uniq.sort
+      end
+
+      # Builds a "/?..." link preserving the current q/model/sort/dir/page,
+      # overridden by `overrides` (a nil value removes that key).
+      def query_merge(overrides)
+        current = { "q" => params[:q], "model" => params[:model], "sort" => params[:sort],
+                    "dir" => params[:dir], "page" => params[:page] }
+        merged  = current.merge(overrides.transform_keys(&:to_s)).reject { |_, v| v.nil? || v.to_s.empty? }
+        query   = Rack::Utils.build_query(merged)
+        query.empty? ? "/" : "/?#{query}"
+      end
+
+      def sort_link(label, key)
+        active   = current_sort_key == key
+        next_dir = active && current_dir == "desc" ? "asc" : "desc"
+        arrow    = active ? (current_dir == "asc" ? " &uarr;" : " &darr;") : ""
+        %(<a href="#{query_merge("sort" => key, "dir" => next_dir, "page" => nil)}">#{label}#{arrow}</a>)
       end
 
       def format_time(iso)
@@ -142,7 +213,17 @@ module LogViz
     end
 
     get "/" do
-      @sessions = session_paths.map { |path| Session.load(path) }
+      all_sessions = session_paths.map { |path| Session.load(path, light: true) }
+      @models      = model_options(all_sessions)
+
+      filtered      = sort_sessions(filtered_sessions(all_sessions))
+      @total        = all_sessions.length
+      @total_matches = filtered.length
+
+      page_data    = paginate(filtered)
+      @sessions    = page_data[:items]
+      @page        = page_data[:page]
+      @total_pages = page_data[:total_pages]
       erb :index
     end
 

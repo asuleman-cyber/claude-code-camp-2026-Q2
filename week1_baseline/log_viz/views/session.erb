@@ -5,6 +5,18 @@
   Started <%= format_time(@session.started_at) %>
 </p>
 
+<% if @session.fatal_error %>
+  <div class="banner banner-warn">&#9888; This log could not be read: <%= h(@session.fatal_error) %></div>
+<% end %>
+
+<% if @session.parse_errors.any? %>
+  <div class="banner banner-warn">
+    &#9888; <%= @session.parse_errors.length %> line<%= "s" unless @session.parse_errors.length == 1 %>
+    could not be parsed and <%= @session.parse_errors.length == 1 ? "was" : "were" %> skipped
+    (line<%= "s" unless @session.parse_errors.length == 1 %> <%= @session.parse_errors.map { |e| e[:line] }.join(", ") %>)
+  </div>
+<% end %>
+
 <% if @session.end_reason %>
   <% if @session.stopped? %>
     <div class="banner banner-warn">&#9888; stopped: <%= @session.end_reason %></div>

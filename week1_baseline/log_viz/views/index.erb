@@ -1,47 +1,86 @@
 <h1>Sessions</h1>
 
-<% if @sessions.empty? %>
+<% if @total.zero? %>
   <p class="empty">No session logs found in <code><%= settings.sessions_dir %></code>.</p>
 <% else %>
-  <table class="sessions">
-    <thead>
-      <tr>
-        <th>Started</th>
-        <th>Session ID</th>
-        <th>Task</th>
-        <th>Model(s)</th>
-        <th>Iterations</th>
-        <th>Tokens (in / out)</th>
-        <th class="nowrap">Peak ctx</th>
-        <th class="nowrap">Cost</th>
-      </tr>
-    </thead>
-    <tbody>
-      <% @sessions.each do |session| %>
-        <tr>
-          <td class="nowrap"><%= format_time(session.started_at) %></td>
-          <td>
-            <a href="/sessions/<%= session.id %>"><%= session.id %></a>
-            <% if session.any_limit_tripped? %><span class="limit-flag" title="a turn tripped a limit">&#9888;</span><% end %>
-          </td>
-          <td class="task">
-            <% if session.task_names.any? %>
-              <span class="task-name"><%= session.task_names.join(", ") %></span>
-            <% else %>
-              <%= truncate(session.task, 90) %>
-            <% end %>
-          </td>
-          <td class="model-list"><%= truncate(session.model_summary, 54) %></td>
-          <td class="nowrap"><%= session.iteration_count %></td>
-          <td class="nowrap"><%= session.total_input_tokens %> / <%= session.total_output_tokens %></td>
-          <td class="nowrap">
-            <% if session.context_window && session.context_window.to_i > 0 %>
-              <%= pct(session.peak_input_tokens, session.context_window) %>%
-            <% else %>&mdash;<% end %>
-          </td>
-          <td class="nowrap"><%= fmt_cost(session.estimated_cost) %></td>
-        </tr>
+  <form class="filter-form" method="get" action="/">
+    <input type="text" name="q" value="<%= h(params[:q]) %>" placeholder="Search task or session id&hellip;">
+    <select name="model">
+      <option value="">All models</option>
+      <% @models.each do |m| %>
+        <option value="<%= h(m) %>" <%= "selected" if params[:model] == m %>><%= h(m) %></option>
       <% end %>
-    </tbody>
-  </table>
+    </select>
+    <button type="submit">Filter</button>
+    <% if params[:q].to_s != "" || params[:model].to_s != "" %>
+      <a href="/" class="filter-clear">Clear</a>
+    <% end %>
+  </form>
+
+  <% if @total_matches.zero? %>
+    <p class="empty">No sessions match the current filter.</p>
+  <% else %>
+    <table class="sessions">
+      <thead>
+        <tr>
+          <th class="nowrap"><%= sort_link("Started", "started_at") %></th>
+          <th>Session ID</th>
+          <th>Task</th>
+          <th>Model(s)</th>
+          <th class="nowrap"><%= sort_link("Iterations", "iterations") %></th>
+          <th class="nowrap"><%= sort_link("Tokens (in / out)", "tokens") %></th>
+          <th class="nowrap">Peak ctx</th>
+          <th class="nowrap"><%= sort_link("Cost", "cost") %></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @sessions.each do |session| %>
+          <tr>
+            <td class="nowrap"><%= format_time(session.started_at) %></td>
+            <td>
+              <a href="/sessions/<%= session.id %>"><%= session.id %></a>
+              <% if session.any_limit_tripped? %><span class="limit-flag" title="a turn tripped a limit">&#9888;</span><% end %>
+              <% if session.fatal_error %>
+                <span class="parse-flag" title="<%= h(session.fatal_error) %>">&#9888; unreadable</span>
+              <% elsif session.parse_errors.any? %>
+                <span class="parse-flag" title="<%= session.parse_errors.length %> line(s) failed to parse">&#9888; partial</span>
+              <% end %>
+            </td>
+            <td class="task">
+              <% if session.task_names.any? %>
+                <span class="task-name"><%= session.task_names.join(", ") %></span>
+              <% else %>
+                <%= truncate(session.task, 90) %>
+              <% end %>
+            </td>
+            <td class="model-list"><%= truncate(session.model_summary, 54) %></td>
+            <td class="nowrap"><%= session.iteration_count %></td>
+            <td class="nowrap"><%= session.total_input_tokens %> / <%= session.total_output_tokens %></td>
+            <td class="nowrap">
+              <% if session.context_window && session.context_window.to_i > 0 %>
+                <%= pct(session.peak_input_tokens, session.context_window) %>%
+              <% else %>&mdash;<% end %>
+            </td>
+            <td class="nowrap"><%= fmt_cost(session.estimated_cost) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+
+    <% if @total_pages > 1 %>
+      <div class="pager">
+        <% if @page > 1 %>
+          <a href="<%= query_merge("page" => @page - 1) %>">&larr; Prev</a>
+        <% else %>
+          <span class="pager-disabled">&larr; Prev</span>
+        <% end %>
+        <span class="pager-status">Page <%= @page %> of <%= @total_pages %> &middot; <%= @total_matches %> session<%= "s" unless @total_matches == 1 %></span>
+        <% if @page < @total_pages %>
+          <a href="<%= query_merge("page" => @page + 1) %>">Next &rarr;</a>
+        <% else %>
+          <span class="pager-disabled">Next &rarr;</span>
+        <% end %>
+      </div>
+    <% end %>
+  <% end %>
 <% end %>

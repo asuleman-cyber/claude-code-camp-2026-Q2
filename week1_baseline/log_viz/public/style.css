@@ -403,6 +403,99 @@ table.sessions a:hover {
   margin-left: 0.3rem;
 }
 
+.parse-flag {
+  color: var(--danger);
+  margin-left: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* Index filter form */
+.filter-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.filter-form input[type="text"] {
+  flex: 1 1 auto;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.filter-form select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: var(--panel);
+}
+
+.filter-form button {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.filter-form button:hover {
+  opacity: 0.9;
+}
+
+.filter-clear {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.filter-clear:hover {
+  text-decoration: underline;
+}
+
+/* Sortable column headers */
+table.sessions th a {
+  color: inherit;
+  text-decoration: none;
+}
+
+table.sessions th a:hover {
+  color: var(--accent);
+}
+
+/* Pager */
+.pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.pager a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.pager a:hover {
+  text-decoration: underline;
+}
+
+.pager-disabled {
+  color: var(--border);
+}
+
+.pager-status {
+  color: var(--muted);
+}
+
 /* Inline dividers (turn_end, compaction) */
 .divider {
   text-align: center;

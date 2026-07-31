@@ -28,6 +28,32 @@ bundle exec ruby bin/log_viz
 
 Then open <http://localhost:4567>.
 
+### Filtering, sorting, and pagination
+
+The session list (`/`) supports query params:
+
+| Param | Values | Purpose |
+|---|---|---|
+| `q` | text | Case-insensitive match against the task text or session id |
+| `model` | model name | Restrict to sessions that used this model |
+| `sort` | `started_at` (default) \| `cost` \| `tokens` \| `iterations` | Sort column |
+| `dir` | `asc` \| `desc` (default) | Sort direction |
+| `page` | integer | 25 sessions per page |
+
+These are also exposed as a search box, a model dropdown, sortable column
+headers, and Prev/Next links on the page itself — the query params just
+make that state linkable/bookmarkable.
+
+## Run the tests
+
+```sh
+bundle exec rake test
+```
+
+Covers ANSI-to-HTML conversion, `.jsonl` parsing (including sessions with
+malformed lines), cost estimation, and the Sinatra routes (via
+`rack-test`), including the 404/path-traversal behavior of `/sessions/:id`.
+
 ## Configuration
 
 | Env var | Default | Purpose |
@@ -43,7 +69,13 @@ Then open <http://localhost:4567>.
   `tool_call` / `tool_result` events into an ordered list of transcript
   entries (`user`, `assistant`, `tool`). Response events are treated as the
   source of truth for task/provider/model/cost so one session can mix models.
+  A malformed line is skipped and recorded in `parse_errors` rather than
+  aborting the whole file; an unreadable file sets `fatal_error` instead of
+  raising. `Session.load(path, light: true)` (used for the session list)
+  skips building the heavy tool/reasoning/assistant entries that only the
+  transcript page needs.
 - `lib/log_viz/ansi.rb` — converts ANSI SGR escape codes in tool results into
   `<span>` elements styled via `public/style.css`.
 - `lib/log_viz/app.rb` — the Sinatra app and view helpers.
 - `views/` — ERB templates for the session list and transcript pages.
+- `test/` — Minitest suite (see "Run the tests" above).

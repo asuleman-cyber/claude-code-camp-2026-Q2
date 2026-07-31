@@ -33,10 +33,22 @@ module LogViz
 
     attr_reader :id, :path, :started_at, :entries,
                 :total_input_tokens, :total_output_tokens, :snapshot,
-                :usage_series, :peak_input_tokens
+                :usage_series, :peak_input_tokens, :parse_errors, :fatal_error
 
-    def self.load(path)
-      new(path).tap(&:parse!)
+    # `light: true` skips building Entry objects for phases the session list
+    # page never renders (assistant text, tool calls/results, reasoning,
+    # plan, compaction) — cheap to compute, expensive to hold in memory
+    # across every session on every index-page hit. `:user` and `:turn_end`
+    # entries are always kept: the former backs the `task` fallback, the
+    # latter backs `any_limit_tripped?`/`turns`, both used on the index page.
+    def self.load(path, light: false)
+      session = new(path)
+      begin
+        session.parse!(light: light)
+      rescue StandardError => e
+        session.instance_variable_set(:@fatal_error, "#{e.class}: #{e.message}")
+      end
+      session
     end
 
     def initialize(path)
@@ -49,20 +61,29 @@ module LogViz
       @snapshot            = {}
       @usage_series        = []
       @peak_input_tokens   = 0
+      @parse_errors        = []
+      @fatal_error         = nil
+      @last_turn           = 0
+      @last_iteration      = 0
     end
 
-    def parse!
+    def parse!(light: false)
       current_turn      = 0
       current_iteration = 0
       pending_user      = true
       pending_calls     = []
       running_turn      = 0   # cumulative input+output within the current turn
 
-      File.foreach(@path) do |line|
+      File.foreach(@path).with_index(1) do |line, lineno|
         line = line.strip
         next if line.empty?
 
-        event = JSON.parse(line)
+        begin
+          event = JSON.parse(line)
+        rescue JSON::ParserError => e
+          @parse_errors << { line: lineno, message: e.message }
+          next
+        end
 
         case event["phase"]
         when "session_start"
@@ -84,14 +105,20 @@ module LogViz
           end
           pending_user = false
         when "compaction"
+          next if light
+
           @entries << Entry.new(type: :compaction, before: event["before"],
                                  dropped: event["dropped"],
                                  turn: current_turn, iteration: current_iteration)
         when "reasoning"
+          next if light
+
           @entries << Entry.new(type: :reasoning, text: event["text"],
                                  redacted: event["redacted"],
                                  turn: current_turn, iteration: current_iteration)
         when "plan"
+          next if light
+
           @entries << Entry.new(type: :plan, text: event["text"],
                                  turn: current_turn, iteration: current_iteration)
         when "response"
@@ -115,19 +142,25 @@ module LogViz
               cost_usd: numeric(event["cost_usd"]),
               usage_unit: event["usage_unit"], usage_level: event["usage_level"])
           end
-          @entries << Entry.new(type: :assistant, text: event["text"], usage: usage,
-                                 stop_reason: event["stop_reason"],
-                                 running_turn_tokens: running_turn,
-                                 task: event["task"], provider: event["provider"],
-                                 model: event["model"], input_tokens: event["input_tokens"],
-                                 output_tokens: event["output_tokens"],
-                                 cost_usd: numeric(event["cost_usd"]),
-                                 usage_unit: event["usage_unit"],
-                                 usage_level: event["usage_level"],
-                                 turn: current_turn, iteration: current_iteration)
+          unless light
+            @entries << Entry.new(type: :assistant, text: event["text"], usage: usage,
+                                   stop_reason: event["stop_reason"],
+                                   running_turn_tokens: running_turn,
+                                   task: event["task"], provider: event["provider"],
+                                   model: event["model"], input_tokens: event["input_tokens"],
+                                   output_tokens: event["output_tokens"],
+                                   cost_usd: numeric(event["cost_usd"]),
+                                   usage_unit: event["usage_unit"],
+                                   usage_level: event["usage_level"],
+                                   turn: current_turn, iteration: current_iteration)
+          end
         when "tool_call"
+          next if light
+
           pending_calls << { name: event["name"], args: event["args"] }
         when "tool_result"
+          next if light
+
           call = pending_calls.shift || {}
           @entries << Entry.new(type: :tool, tool_name: event["name"] || call[:name], tool_args: call[:args],
                                  tool_result: event["result"], tool_ok: event.fetch("ok", true),
@@ -138,15 +171,18 @@ module LogViz
                                  iterations: event["iterations"], tokens: event["tokens"],
                                  turn: current_turn, iteration: current_iteration)
         end
+
+        @last_turn      = current_turn      if current_turn.to_i > @last_turn
+        @last_iteration = current_iteration if current_iteration.to_i > @last_iteration
       end
     end
 
     def turn_count
-      entries.map(&:turn).max.to_i + 1
+      @last_turn + 1
     end
 
     def iteration_count
-      entries.map(&:iteration).max.to_i
+      @last_iteration
     end
 
     # ---- denominators sourced from the session_start snapshot ------------
