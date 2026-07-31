@@ -3,7 +3,7 @@ from .base import Base
 
 class OpenAI(Base):
     BASE_URL = "https://api.openai.com/v1/chat/completions"
-    MODELS = {
+    MODELS = {      
         "gpt-5.5": {
             "context_window": 1_000_000,
             "cost_per_million": {"input": 5.0, "output": 30.0},
