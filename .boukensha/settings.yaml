@@ -10,8 +10,27 @@ tasks:
     #model: gemma4:31b-cloud
     prompt_override:
       system: true
-mud:
-  host: localhost
-  port: 4000
-  username: dummy
-  password: helloworld
+# MCP servers to plug into the agent, keyed by name — this is the ONLY
+# source of the agent's tools (boukensha ships none of its own). `mud`
+# spawns the mud-manager MCP daemon (week0_explore/mud_manager) over stdio;
+# `--mcp` is what puts it in MCP-server mode. `prefix: tbamud` scopes its
+# tools agent-side as tbamud__look, tbamud__attack, etc. — the daemon itself
+# never sees the prefix. Credentials travel via `env:`, never via tool
+# arguments, so the LLM can never see or set them.
+#
+# `command: mud-manager` (bare) assumes the gem is installed and the binary
+# is on PATH:
+#   cd week0_explore/mud_manager && gem build mud_manager.gemspec && gem install ./mud_manager-*.gem
+# If it isn't installed, run it straight from source instead:
+#   command: ruby
+#   args:    [week0_explore/mud_manager/bin/mud-manager, --mcp]
+mcp_servers:
+  mud:
+    command: mud-manager
+    args:    [--mcp]
+    prefix:  tbamud
+    env:
+      MUD_HOST:     localhost
+      MUD_PORT:     "4000"
+      MUD_NAME:     dummy
+      MUD_PASSWORD: helloworld

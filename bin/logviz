@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run the log_viz Sinatra app from anywhere in the repo.
+#
+# Usage: logviz          (from repo root: ./bin/logviz)
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(dirname "$script_dir")"
+
+cd "$repo_root/week1_baseline/log_viz"
+exec bundle exec ruby bin/log_viz "$@"
