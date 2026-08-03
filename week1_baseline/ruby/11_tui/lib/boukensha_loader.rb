@@ -12,6 +12,12 @@
 # A bare single-line path (the pre-step-9 format) is still accepted and is
 # treated as boukensha_path.
 #
+# MUD (and any other tool) connection details come from settings.yaml's
+# `mcp_servers:` block. A spawned server inherits this process's environment,
+# so a legacy var like MUD_HOST still reaches it — but only for keys the
+# server's own `env:` block doesn't already set; config wins over the
+# environment.
+#
 # --no-tui falls back to the plain terminal REPL (no charm-ruby).
 #
 # Examples:

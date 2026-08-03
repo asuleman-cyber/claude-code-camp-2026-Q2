@@ -4,7 +4,7 @@
 gem build boukensha.gemspec
 gem install boukensha-0.12.0.gem
 
-When you call an LLM directly you are responsible for the context window. There is no auto-compacting. This step adds proper token tracking, visual warnings, and automatic compaction so the agent never silently blows past the limit — on top of the MCP-host tool model and terminal UI carried forward from earlier steps.
+When you call an LLM directly you are responsible for the context window. There is no auto-compacting. This step adds proper token tracking, visual warnings, and automatic compaction so the agent never silently blows past the limit — on top of the MCP-host tool model and the terminal UI (built on the [`charm`](https://github.com/charm-ruby/charm) gem: bubbletea + lipgloss + bubbles) carried forward from earlier steps.
 
 The standard tool library is **MCP**.
 
