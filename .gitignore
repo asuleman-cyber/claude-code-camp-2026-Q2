@@ -12,8 +12,13 @@
 # Python bytecode cache
 __pycache__/
 
-# Boukensha session logs
+# Boukensha session logs, and the mud_manager manager/telnet logs mud_monitor reads
 .boukensha/sessions/
+.boukensha/manager/
+.boukensha/telnet/
 
 # Claude Code local settings
 .claude/
+
+# Personal catch-up plan
+docs/plans/week2_catchup_plan.md

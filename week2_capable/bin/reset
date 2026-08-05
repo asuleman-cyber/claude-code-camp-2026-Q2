@@ -1,0 +1,80 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+#
+# Resets PLAYER_USERNAME to the starting room (The Temple Of Midgaard, vnum
+# 3001) using admin commands, via the MudManager SDK directly — no MCP
+# daemon, no agent, just two telnet logins. Run this before starting the
+# agent so every navigation experiment starts from the same known position.
+#
+# See docs/plans/week2_catchup_plan.md Phase A and the source-of-truth plan
+# this follows: claude-code-camp-2026-Q2-main/docs/plans/week_2/reset_script.md
+#
+# Usage:
+#   ruby week2_capable/bin/reset
+#   ADMIN_USERNAME=admin ADMIN_PASSWORD=password \
+#   PLAYER_USERNAME=dummy PLAYER_PASSWORD=helloworld \
+#   ruby week2_capable/bin/reset
+#
+# PLAYER_USERNAME/PLAYER_PASSWORD fall back to MUD_NAME/MUD_PASSWORD — the
+# same pair settings.yaml's mcp_servers.mud block reads — so this works with
+# zero extra config once your agent's credentials are already in the
+# environment.
+#
+# Why two connections: `trans` only moves a character that is currently
+# online, so this logs the player in first (bringing them online if they
+# weren't already), then logs in as admin to `goto` the starting room and
+# `trans` the player to it. Both sessions quit cleanly on exit so the agent's
+# own login right after this script doesn't collide with a still-connected
+# character.
+
+$LOAD_PATH.unshift File.expand_path("../mud_manager/lib", __dir__)
+require "mud_manager"
+
+ADMIN_USERNAME  = ENV.fetch("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD  = ENV.fetch("ADMIN_PASSWORD", "password")
+PLAYER_USERNAME = ENV["PLAYER_USERNAME"] || ENV["MUD_NAME"] || "dummy"
+PLAYER_PASSWORD = ENV["PLAYER_PASSWORD"] || ENV["MUD_PASSWORD"] || "helloworld"
+MUD_HOST        = ENV.fetch("MUD_HOST", "localhost")
+MUD_PORT        = Integer(ENV.fetch("MUD_PORT", "4000"))
+START_ROOM_VNUM = ENV.fetch("START_ROOM_VNUM", "3001") # The Temple Of Midgaard
+
+def connect(name, password)
+  session = MudManager::Session.new(host: MUD_HOST, port: MUD_PORT)
+  session.open
+  session.login(name, password)
+  session
+rescue MudManager::Session::Error => e
+  abort "[reset] failed to connect/login as '#{name}': #{e.message}"
+end
+
+def run_admin_command(session, command, label)
+  session.drain
+  session.send_command(command)
+  output = session.read_until_prompt
+  puts "[reset] #{label}:\n#{output}"
+  output
+end
+
+puts "[reset] connecting player '#{PLAYER_USERNAME}'..."
+player = connect(PLAYER_USERNAME, PLAYER_PASSWORD)
+
+puts "[reset] connecting admin '#{ADMIN_USERNAME}'..."
+admin = connect(ADMIN_USERNAME, ADMIN_PASSWORD)
+
+begin
+  run_admin_command(admin, MudManager::Primitives.admin_goto(START_ROOM_VNUM), "goto #{START_ROOM_VNUM}")
+  output = run_admin_command(admin, MudManager::Primitives.admin_transfer(PLAYER_USERNAME), "trans #{PLAYER_USERNAME}")
+
+  if output =~ /no such (player|creature)/i
+    abort "[reset] '#{PLAYER_USERNAME}' does not appear to be online — trans failed."
+  end
+
+  puts "[reset] '#{PLAYER_USERNAME}' moved to room #{START_ROOM_VNUM}."
+ensure
+  [admin, player].each do |session|
+    session.send_command(MudManager::Primitives.quit)
+    session.close
+  rescue StandardError
+    # best-effort cleanup — a session that's already gone is fine
+  end
+end

@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+#
+# Rebuilds and reinstalls the mud_manager and boukensha gems from source, in
+# that order — boukensha's tests spawn the mud-manager binary on PATH, so it
+# should be current first. Run this after editing either gem and before
+# testing the change through the installed `boukensha` / `mud-manager`
+# executables (as opposed to running straight from source via BOUKENSHA_PATH).
+#
+# A plain Ruby script rather than a shell script so it runs the same way
+# under PowerShell/cmd and bash with no OS-specific twin to maintain.
+#
+#   ruby week2_capable/bin/rebuild
+
+require "fileutils"
+
+ROOT = File.expand_path("..", __dir__)
+
+def run!(cmd, chdir:)
+  puts "  $ #{cmd}"
+  system(cmd, chdir: chdir) || abort("[rebuild] failed: #{cmd} (in #{chdir})")
+end
+
+%w[mud_manager boukensha].each do |gem_dir|
+  dir = File.join(ROOT, gem_dir)
+  abort("[rebuild] #{dir} does not exist") unless Dir.exist?(dir)
+
+  puts "==> #{gem_dir}"
+
+  Dir.glob(File.join(dir, "*.gem")).each { |f| FileUtils.rm_f(f) }
+
+  gemspec = Dir.glob(File.join(dir, "*.gemspec")).first
+  abort("[rebuild] no gemspec found in #{dir}") unless gemspec
+  run!("gem build #{File.basename(gemspec)}", chdir: dir)
+
+  built = Dir.glob(File.join(dir, "*.gem")).max_by { |f| File.mtime(f) }
+  abort("[rebuild] gem build produced no .gem file in #{dir}") unless built
+
+  # --ignore-dependencies: boukensha depends on `charm` (TUI), which has no
+  # installable Windows build here (see week2_capable/README.md — "Known
+  # issue: TUI / charm on Windows"). boukensha's own require already guards
+  # against charm being absent and falls back to the plain REPL, so failing
+  # the whole install over an unmet TUI dependency would be stricter than
+  # the code itself. mud_manager has no gem dependencies, so this is a no-op
+  # there.
+  run!("gem install --local #{File.basename(built)} --ignore-dependencies --no-document", chdir: dir)
+end
+
+puts "==> done"
+system("gem", "list", "--local", "mud_manager", "boukensha")

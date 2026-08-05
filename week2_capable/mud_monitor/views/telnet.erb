@@ -1,0 +1,53 @@
+<h1>Telnet Log <%= live_badge(@live) %></h1>
+<p class="meta">
+  Every raw byte that crossed the socket, both directions — including
+  whatever the agent's <code>drain</code> calls silently discarded between
+  commands. Passwords are redacted at the source; never logged.
+</p>
+
+<% unless telnet_store.enabled? %>
+  <p class="empty">
+    Not enabled. Set <code>MUD_TELNET_LOG_DIR</code> in the <code>mud:</code> MCP
+    server's <code>env:</code> block in <code>.boukensha/settings.yaml</code>, then
+    restart the agent. This is the expensive log — leave it off unless you're
+    chasing something specific.
+  </p>
+<% else %>
+  <div class="log-toolbar">
+    <% if @dates.length > 1 %>
+      <form method="get" action="/telnet" class="date-form">
+        <select name="date" onchange="this.form.submit()">
+          <% @dates.each do |d| %>
+            <option value="<%= d %>" <%= "selected" if @date == d %>><%= d %></option>
+          <% end %>
+        </select>
+      </form>
+    <% end %>
+    <div class="dir-filter">
+      <a href="<%= query_merge("dir" => nil) %>" class="<%= "active" unless @dir %>">all</a>
+      <a href="<%= query_merge("dir" => "out") %>" class="<%= "active" if @dir == "out" %>">&rarr; out</a>
+      <a href="<%= query_merge("dir" => "in") %>" class="<%= "active" if @dir == "in" %>">&larr; in</a>
+    </div>
+    <% if @live %>
+      <a href="<%= query_merge("live" => "0") %>" class="filter-clear">Pause auto-refresh</a>
+    <% elsif telnet_store.live?(date: @date) %>
+      <a href="<%= query_merge("live" => nil) %>" class="filter-clear">Resume auto-refresh</a>
+    <% end %>
+  </div>
+
+  <% if @entries.empty? %>
+    <p class="empty">No telnet log entries yet<%= " for #{@date}" if @date %>.</p>
+  <% else %>
+    <div class="telnet-feed">
+      <% @entries.each do |e| %>
+        <div class="telnet-line telnet-<%= e.dir %><%= " telnet-redacted" if e.redacted %>">
+          <span class="telnet-clock"><%= fmt_clock(e.at) %></span>
+          <span class="telnet-dir"><%= e.dir == "out" ? "&rarr;" : "&larr;" %></span>
+          <span class="telnet-bytes">(<%= e.bytes %>B)</span>
+          <pre class="telnet-text"><%= e.redacted ? "&lt;redacted&gt;" : ansi_html(e.text) %></pre>
+        </div>
+      <% end %>
+    </div>
+    <p class="meta">Showing the last <%= @entries.length %> chunk<%= "s" unless @entries.length == 1 %><%= " for #{@date}" if @date %>.</p>
+  <% end %>
+<% end %>

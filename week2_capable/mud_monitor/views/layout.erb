@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mud Monitor</title>
+  <link rel="stylesheet" href="/style.css">
+  <%= live_refresh_tag(@live) if defined?(@live) %>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand">Mud Monitor</a>
+    <nav class="topnav">
+      <a href="/" class="<%= "active" if request.path_info == "/" %>">Sessions</a>
+      <a href="/manager" class="<%= "active" if request.path_info == "/manager" %>">Manager Log</a>
+      <a href="/telnet" class="<%= "active" if request.path_info == "/telnet" %>">Telnet Log</a>
+    </nav>
+  </header>
+  <main>
+    <%= yield %>
+  </main>
+</body>
+</html>

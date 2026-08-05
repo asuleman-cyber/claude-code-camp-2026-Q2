@@ -34,3 +34,11 @@ mcp_servers:
       MUD_PORT:     "4000"
       MUD_NAME:     dummy
       MUD_PASSWORD: helloworld
+      # Manager log: one record per tool call the daemon executes (tool,
+      # args, elapsed time, result). Telnet log: every raw byte that
+      # crosses the socket in both directions (passwords redacted) — the
+      # expensive one, but it's what shows what the agent's `drain` calls
+      # silently discard between commands. Both off unless set; both read
+      # by week2_capable/mud_monitor.
+      MUD_MANAGER_LOG_DIR: .boukensha/manager
+      MUD_TELNET_LOG_DIR:  .boukensha/telnet
