@@ -3,15 +3,16 @@
 Unified observability for a boukensha + mud_manager run: agent sessions, the
 mud_manager command log, and the raw telnet feed — one app instead of three
 (`week1_baseline/log_viz` + a would-be world visualizer + nothing at all for
-the MUD side), per the goal in
-`claude-code-camp-2026-Q2-main/docs/plans/week_2/mud_monitor.md`.
+the MUD side).
 
-**Stack note:** that reference doc specifies a Rails 8 API + React/TS
-frontend. This build uses Sinatra + ERB instead — the exact stack
-`week1_baseline/log_viz` already proved out in this repo, with zero new
-toolchain (Rails and the `sqlite3` gem aren't installed here and are
-untested on Windows). See `week2_capable/README.md`'s Phase B section for
-the full reasoning. Live updates are meta-refresh polling, not SSE.
+**Stack note:** I considered a Rails API + React/TS frontend, but Rails and
+the `sqlite3` gem weren't installed here and were untested on Windows —
+standing up that whole toolchain for what's fundamentally a log viewer felt
+like a disproportionate lift. Built on Sinatra + ERB instead — the exact
+stack `week1_baseline/log_viz` already proved out in this repo, with zero
+new toolchain. See `week2_capable/README.md`'s Phase B section and
+`docs/plans/week2_phase_A_B_C_report.md` for the full reasoning. Live
+updates are meta-refresh polling, not SSE.
 
 ## Run it
 
@@ -21,7 +22,7 @@ bundle install   # first time only
 ruby bin/mud_monitor            # http://localhost:4568
 ```
 
-Env vars (all optional — default to `.boukensha/{sessions,manager,telnet}`
+Env vars (all optional — default to the matching path under `.boukensha/`
 at the repo root):
 
 | var | purpose |
@@ -29,6 +30,9 @@ at the repo root):
 | `MUD_MONITOR_SESSIONS_DIR` | agent session logs (`Boukensha::Logger`) |
 | `MUD_MONITOR_MANAGER_DIR` | mud_manager's command log (`MudManager::ManagerLog`) |
 | `MUD_MONITOR_TELNET_DIR` | mud_manager's raw telnet log (`MudManager::TelnetLog`) |
+| `MUD_KNOWLEDGE_DB` | the agent's room/entity memory (`Boukensha::Mud::Memory::Store`) |
+| `MUD_JOURNAL_DIR` | the change-capture journal (`Boukensha::Mud::Memory::Journal`) |
+| `BOUKENSHA_ERROR_LOG` | the agent's caught-exception log (`Boukensha::ErrorLog`) |
 | `PORT` | default `4568` |
 
 ## Pages
@@ -46,11 +50,20 @@ at the repo root):
   filterable by direction. This is what shows what the agent's `drain`
   calls silently discard between commands. Passwords are redacted at the
   source (`MudManager::Session#login`) and never appear here.
+- `/knowledge` — the agent's room/entity memory (`Boukensha::Mud::Memory::Store`),
+  read live from `knowledge.sqlite3`: rooms, exits (explored `✓` vs.
+  frontier `?`), entities with cached threat/health, current player state.
+  `/knowledge/rooms/:id` drills into one room's exits.
+- `/progression` — the change-capture journal: every actual change to
+  player state or a newly discovered room, in order — a time series
+  alongside `/knowledge`'s current-snapshot view.
+- `/errors` — exceptions the agent caught and logged instead of silently
+  swallowing or crashing, newest first, with backtraces.
 
-Both log pages show "Not enabled" with the env var to set until
-`MUD_MANAGER_LOG_DIR`/`MUD_TELNET_LOG_DIR` are configured on the `mud:` MCP
-server in `.boukensha/settings.yaml` (already done for this repo's live
-profile) — both logs are off by default upstream in mud_manager.
+Every log/DB-backed page shows "Not enabled" with the env var to set until
+its upstream source is actually configured — all of these are off by
+default in `mud_manager`/`boukensha` and were turned on for this repo's live
+profile as each phase landed.
 
 ## Tests
 
@@ -58,20 +71,19 @@ profile) — both logs are off by default upstream in mud_manager.
 rake test
 ```
 
-26 tests: `Session` parsing/timing, `ManagerLogStore`/`TelnetLogStore`
-reading, and Rack::Test coverage of all four routes including the
-disabled-log and path-traversal cases.
+39 tests across `Session` parsing/timing, `ManagerLogStore`/`TelnetLogStore`/
+`KnowledgeStore`/`JournalStore`/`ErrorLogStore` reading, and Rack::Test
+coverage of every route including disabled-log states and path traversal.
 
-## What's deliberately not built (Phase B scope cut)
+## What's deliberately not built
 
-Per `docs/plans/week2_catchup_plan.md` Phase B: no SSE, no `diffs/dropped`
-or `diffs/reshaped` derived views, no correlation IDs linking a transcript's
-tool call to its exact manager-log record, no world-data pages, no
-`Boukensha::Logger` task-stack fix (Amendment A — the "one `inspect_room`
-call opens a second session file" bug). The reference implementation itself
-only shipped through its phase 6 of 10; this build covers the phase 1
-(session transcript) + phase 4 (manager log) + phase 5 (telnet log)
-equivalent, with a lighter-weight timing model (phase 2's "lite" version)
-layered in. Manager/telnet-to-transcript correlation is by eye (same
-timestamp range), not by exact ID — good enough for "does the tool call
-match what actually happened," not for automated diffing.
+No SSE (meta-refresh polling instead), no dropped/reshaped diff views
+between the telnet and manager logs, no correlation IDs linking a
+transcript's tool call to its exact manager-log record, no world-data
+pages, and no visual room/exit graph on the Knowledge tab (the list +
+room-detail pages cover the same information without the graph layout).
+Manager/telnet-to-transcript correlation is by eye (same timestamp range),
+not by exact ID — good enough for "does the tool call match what actually
+happened," not for automated diffing. Full reasoning for each of these:
+`docs/plans/week2_phase_A_B_C_report.md` and
+`docs/plans/week2_phase_D_E_F_report.md`.

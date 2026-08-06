@@ -24,6 +24,9 @@ module MudMonitor
       MudMonitor::App.set :sessions_dir, @sessions_dir
       MudMonitor::App.set :manager_dir, @manager_dir
       MudMonitor::App.set :telnet_dir, @telnet_dir
+      MudMonitor::App.set :knowledge_db, File.join(Dir.mktmpdir, "knowledge.sqlite3") # absent by default
+      MudMonitor::App.set :journal_dir, File.join(Dir.mktmpdir, "journal") # absent by default
+      MudMonitor::App.set :error_log_path, File.join(Dir.mktmpdir, "error.log") # absent by default
     end
 
     def write_session(id, at:, task: "do a thing", model: "claude-sonnet-4-6", extra_lines: [])
@@ -158,6 +161,90 @@ module MudMonitor
 
       assert_includes last_response.body, "The Common Square"
       refute_includes last_response.body, ">look<"
+    end
+
+    # --- knowledge page (Phase D) ---
+
+    def test_knowledge_page_shows_disabled_message_when_db_absent
+      get "/knowledge"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "No"
+    end
+
+    def test_knowledge_page_lists_rooms_and_entities
+      db_path = File.join(Dir.mktmpdir, "knowledge.sqlite3")
+      require "sqlite3"
+      db = SQLite3::Database.new(db_path)
+      db.execute_batch(<<~SQL)
+        CREATE TABLE rooms (id INTEGER PRIMARY KEY, weak_fingerprint TEXT, strong_fingerprint TEXT,
+          name TEXT, description TEXT, first_seen_at TEXT, last_seen_at TEXT, visit_count INTEGER, surveyed_at TEXT);
+        CREATE TABLE room_exits (room_id INTEGER, direction TEXT, target_name TEXT, target_room_id INTEGER,
+          traversals INTEGER, last_seen_at TEXT);
+        CREATE TABLE entities (id INTEGER PRIMARY KEY, kind TEXT, descr TEXT, keyword TEXT, threat TEXT,
+          threat_level INTEGER, health TEXT, seen_count INTEGER, first_seen_at TEXT, last_seen_at TEXT);
+        CREATE TABLE entity_sightings (entity_id INTEGER, room_id INTEGER, count INTEGER, sighting_count INTEGER,
+          first_seen_at TEXT, last_seen_at TEXT);
+        CREATE TABLE player_state (id INTEGER PRIMARY KEY, current_room_id INTEGER, hp INTEGER, updated_at TEXT);
+        INSERT INTO rooms VALUES (1, 'fp1', NULL, 'Market Square', 'busy', '2026-01-01', '2026-01-02', 1, '2026-01-01');
+        INSERT INTO entities VALUES (1, 'mob', 'A cityguard stands here.', 'cityguard', 'Easy.', 1, 'excellent', 1, '2026-01-01', '2026-01-02');
+      SQL
+      db.close
+      MudMonitor::App.set :knowledge_db, db_path
+
+      get "/knowledge"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "Market Square"
+      assert_includes last_response.body, "cityguard"
+    end
+
+    def test_knowledge_room_detail_404s_for_unknown_id
+      get "/knowledge/rooms/999"
+      assert_equal 404, last_response.status
+    end
+
+    # --- progression page (Phase E) ---
+
+    def test_progression_page_shows_disabled_message_when_dir_absent
+      get "/progression"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "Not enabled"
+    end
+
+    def test_progression_page_lists_changes
+      dir = File.join(Dir.mktmpdir, "journal")
+      Dir.mkdir(dir)
+      File.write(File.join(dir, "#{Time.now.strftime("%Y%m%d")}.jsonl"),
+                 { seq: 1, at: Time.now.iso8601, stream: "player", key: "hp", from: 20, to: 15 }.to_json)
+      MudMonitor::App.set :journal_dir, dir
+
+      get "/progression"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "hp"
+    end
+
+    # --- errors page (Phase F) ---
+
+    def test_errors_page_shows_empty_message_when_log_absent
+      get "/errors"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "No"
+    end
+
+    def test_errors_page_lists_errors
+      path = File.join(Dir.mktmpdir, "error.log")
+      File.write(path, { at: Time.now.iso8601, error_class: "RuntimeError", message: "boom", backtrace: ["a.rb:1"] }.to_json)
+      MudMonitor::App.set :error_log_path, path
+
+      get "/errors"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "RuntimeError"
+      assert_includes last_response.body, "boom"
     end
   end
 end

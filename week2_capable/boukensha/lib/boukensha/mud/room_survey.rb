@@ -1,7 +1,7 @@
 require_relative "room_parser"
 
 module Boukensha
-  module Tools
+  module Mud
     # Deterministic replacement for an LLM-driven room_inspector ReAct loop
     # — per docs/plans/week2_catchup_plan.md Phase C, that subagent was
     # never built in this fork; this goes straight to the destination the
@@ -11,11 +11,17 @@ module Boukensha
     # are here — is exactly what RoomParser's color-based classification
     # already answers deterministically.
     #
+    # Was Boukensha::Tools::RoomSurvey (Phase C, returned a formatted
+    # string as a tool result). Moved under Mud:: and changed to return
+    # structured data in Phase D: it is no longer a tool — Mud::Hooks
+    # drives it automatically and persists the result to Memory::Store,
+    # then Mud::StateBlock does the formatting. See basic_memory.md §5.3/§8.
+    #
     # Drives already-registered MUD tools via an injected `call_tool`
-    # lambda (`->(name, args) { result_text }`) rather than spawning its own
-    # MCP session — see boukensha_loader.rb, which wires this to
-    # `registry.dispatch` (via RunDSL#dispatch) so the survey's tool calls
-    # go through the same allow: gate the player's own tools do (Phase A).
+    # lambda (`->(name, args) { result_text }`) — see boukensha_loader.rb,
+    # which wires this to `registry.dispatch` (via RunDSL#dispatch) so the
+    # survey's tool calls go through the same allow: gate the player's own
+    # tools do (Phase A).
     class RoomSurvey
       # Verified against the live server (not assumed from the reference
       # plan, which guessed "They aren't here." for both — wrong for this
@@ -30,18 +36,24 @@ module Boukensha
       # surveys (mob description text -> verified keyword, or nil for
       # "guessed wrong, don't retry"). Caches the *mapping*, not the
       # reading — threat/health stay volatile and are re-queried every
-      # visit, per the source plan's caching rule.
+      # visit, per the source plan's caching rule. Mud::Hooks seeds this
+      # from Memory::Store's entities table, so a keyword already resolved
+      # in a PAST session doesn't need re-verifying either.
       def initialize(call_tool:, keyword_cache: {})
         @call_tool     = call_tool
         @keyword_cache = keyword_cache
       end
 
+      # Returns { room:, appraisals:, events_text: } — structured data, no
+      # formatting. room is RoomParser's Hash; appraisals is one entry per
+      # *distinct* mob description: { text:, count:, keyword:, threat:,
+      # health: } (keyword/threat/health nil if unresolved).
       def call
         events_text = @call_tool.call("poll", {})
         room        = RoomParser.parse(@call_tool.call("inspect", {}))
         appraisals  = appraise_mobs(room[:mobs])
 
-        format_summary(room: room, appraisals: appraisals, events_text: events_text)
+        { room: room, appraisals: appraisals, events_text: events_text }
       end
 
       private
@@ -100,38 +112,6 @@ module Boukensha
       def extract_health(text)
         lines = RoomParser.strip_ansi(text.to_s).split("\r\n").map(&:strip).reject(&:empty?)
         lines.find { |l| l =~ /condition/i } || lines.first
-      end
-
-      def format_summary(room:, appraisals:, events_text:)
-        lines = ["[here] #{room[:name] || "unknown room"}"]
-        lines << "exits: #{format_exits(room[:exit_targets])}" if room[:exit_targets]&.any?
-        lines << "description: #{room[:description]}" unless room[:description].to_s.empty?
-        lines << "mobs: #{appraisals.map { |a| format_mob(a) }.join(" | ")}" if appraisals.any?
-        lines << "objects: #{room[:objects].map { |o| o[:text] }.join(" | ")}" if room[:objects]&.any?
-
-        events = clean_line_all(events_text)
-        lines << "events: #{events}" unless events.empty?
-
-        if room[:vitals]
-          v = room[:vitals]
-          lines << "you: #{v[:hp]}hp #{v[:mana]}mana #{v[:move]}mv"
-        end
-
-        lines.join("\n")
-      end
-
-      def format_exits(exit_targets)
-        exit_targets.map { |dir, dest| "#{dir}→#{dest}" }.join(" | ")
-      end
-
-      def format_mob(appraisal)
-        count_suffix = appraisal[:count] > 1 ? " x#{appraisal[:count]}" : ""
-        details = [appraisal[:threat], appraisal[:health]].compact
-        details.empty? ? "#{appraisal[:text]}#{count_suffix}" : "#{appraisal[:text]}#{count_suffix} (#{details.join("; ")})"
-      end
-
-      def clean_line_all(text)
-        RoomParser.strip_ansi(text.to_s).split("\r\n").map(&:strip).reject(&:empty?).join(" / ")
       end
     end
   end

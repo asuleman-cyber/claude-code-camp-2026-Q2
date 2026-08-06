@@ -31,12 +31,14 @@ module Boukensha
 
     attr_reader :logger, :context, :model, :version
 
-    def initialize(context:, registry:, builder:, client:, logger:, config_dir: nil, provider: nil, model: nil, version: nil, api_key: nil, servers: nil, max_iterations: nil, max_turn_tokens: nil, max_output_tokens: nil)
+    def initialize(context:, registry:, builder:, client:, logger:, hooks: Hooks.new, error_log: nil, config_dir: nil, provider: nil, model: nil, version: nil, api_key: nil, servers: nil, max_iterations: nil, max_turn_tokens: nil, max_output_tokens: nil)
       @context    = context
       @registry   = registry
       @builder    = builder
       @client     = client
       @logger     = logger
+      @hooks      = hooks
+      @error_log  = error_log
       @config_dir = config_dir
       @provider   = provider
       @model      = model
@@ -124,6 +126,7 @@ module Boukensha
         builder:  @builder,
         client:   @client,
         logger:   @logger,
+        hooks:    @hooks,
         max_iterations:    @max_iterations,
         max_turn_tokens:   @max_turn_tokens,
         max_output_tokens: @max_output_tokens
@@ -136,6 +139,13 @@ module Boukensha
       output("\n[error] #{e.message}")
     rescue ApiError => e
       output("\n[error] API call failed: #{e.message}")
+    rescue StandardError => e
+      # A genuinely unexpected error used to crash the whole REPL process
+      # (nothing below LoopError/ApiError was ever caught here) — Phase F.
+      # This is the safety net: log it with a backtrace, keep the session
+      # alive so the user doesn't lose their conversation over one bad turn.
+      @error_log&.record(e, context: "Repl#run_turn")
+      output("\n[error] #{e.class}: #{e.message} (logged; the session is still alive — try again)")
     end
 
     def start

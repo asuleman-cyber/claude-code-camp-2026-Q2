@@ -1,0 +1,92 @@
+<h1>Knowledge</h1>
+<p class="meta">What the agent has actually earned by exploring — rooms and entities it has stood in or seen, read live from <code>knowledge.sqlite3</code> (Phase D). This never came from the world files; a room appears here only after the agent visited it.</p>
+
+<% unless knowledge_store.enabled? %>
+  <p class="empty">
+    No <code><%= settings.knowledge_db %></code> yet. It's created the first time the agent runs with a <code>mud:</code> MCP server configured (Phase D memory hooks).
+  </p>
+<% else %>
+  <div class="kv-strip">
+    <div class="kv"><span class="kv-num"><%= @counts[:rooms] %></span><span class="kv-label">rooms known</span></div>
+    <div class="kv"><span class="kv-num"><%= @counts[:entities] %></span><span class="kv-label">entities known</span></div>
+    <div class="kv"><span class="kv-num"><%= @counts[:frontiers] %></span><span class="kv-label">unexplored frontiers</span></div>
+  </div>
+
+  <% if @player %>
+    <div class="statstrip">
+      <div class="statstrip-head">
+        <span class="statstrip-model">Player state</span>
+        <span class="statstrip-cost">as of <%= format_time(@player["updated_at"]) %></span>
+      </div>
+      <div class="statstrip-total">
+        <% if @player["hp"] %><%= @player["hp"] %><%= "/#{@player["max_hp"]}" if @player["max_hp"] %>hp &middot; <% end %>
+        <% if @player["mana"] %><%= @player["mana"] %>mana &middot; <% end %>
+        <% if @player["move"] %><%= @player["move"] %>mv &middot; <% end %>
+        <% if @player["level"] %>lvl <%= @player["level"] %> &middot; <% end %>
+        <% if @player["gold"] %><%= @player["gold"] %> gold &middot; <% end %>
+        <%= @player["position"] || "position unknown" %>
+        <% if @player["current_room_id"] %>
+          &middot; in <a href="/knowledge/rooms/<%= @player["current_room_id"] %>"><%= @rooms.find { |r| r["id"] == @player["current_room_id"] }&.dig("name") || "room #{@player["current_room_id"]}" %></a>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <h2>Rooms</h2>
+  <% if @rooms.empty? %>
+    <p class="empty">No rooms recorded yet.</p>
+  <% else %>
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th class="nowrap">Visits</th>
+          <th class="nowrap">Surveyed</th>
+          <th class="nowrap">First seen</th>
+          <th class="nowrap">Last seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @rooms.each do |room| %>
+          <tr>
+            <td><a href="/knowledge/rooms/<%= room["id"] %>"><%= room["name"] %></a></td>
+            <td class="nowrap"><%= room["visit_count"] %></td>
+            <td class="nowrap"><%= room["surveyed_at"] ? "&#10003;" : "&mdash;" %></td>
+            <td class="nowrap"><%= format_time(room["first_seen_at"]) %></td>
+            <td class="nowrap"><%= format_time(room["last_seen_at"]) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+
+  <h2>Entities</h2>
+  <% if @entities.empty? %>
+    <p class="empty">No entities recorded yet.</p>
+  <% else %>
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th class="nowrap">Kind</th>
+          <th>Description</th>
+          <th class="nowrap">Keyword</th>
+          <th>Threat</th>
+          <th>Health</th>
+          <th class="nowrap">Seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @entities.each do |e| %>
+          <tr>
+            <td class="nowrap"><span class="mode-badge mode-<%= e["kind"] %>"><%= e["kind"] %></span></td>
+            <td><%= e["descr"] %></td>
+            <td class="nowrap"><%= e["keyword"] || "&mdash;" %></td>
+            <td><%= e["threat"] || "&mdash;" %></td>
+            <td><%= e["health"] || "&mdash;" %></td>
+            <td class="nowrap"><%= e["seen_count"] %>x</td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+<% end %>

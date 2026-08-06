@@ -17,6 +17,17 @@ __pycache__/
 .boukensha/manager/
 .boukensha/telnet/
 
+# Agent's SQLite room/entity memory (Phase D) — binary, changes every run
+.boukensha/knowledge.sqlite3
+.boukensha/knowledge.sqlite3-wal
+.boukensha/knowledge.sqlite3-shm
+
+# Change-capture journal (Phase E)
+.boukensha/journal/
+
+# Agent error log (Phase F)
+.boukensha/error.log
+
 # Claude Code local settings
 .claude/
 

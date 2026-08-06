@@ -118,29 +118,42 @@ module BoukenshaLoader
     # daemon, but only for keys its `env:` block doesn't set: config now wins
     # over the environment, where it used to lose.
     #
-    # inspect_room (Phase C — docs/plans/week2_catchup_plan.md): a native
-    # tool wired here, not shipped by boukensha itself. It drives
-    # Boukensha::Tools::RoomSurvey — a deterministic poll/inspect/
-    # consider/examine sequence, zero LLM calls — through `dispatch`
-    # (RunDSL#dispatch), so its MUD calls go through the same Registry and
-    # the same `allow:` gate as every other tool. Registered only if a
-    # `mud` MCP server is actually configured; the keyword cache is a
-    # closure variable so it lives for the whole REPL session, not per call.
+    # Mud::Hooks (Phase D — docs/plans/week2_catchup_plan.md): wired here,
+    # not shipped by boukensha itself. Phase C's `inspect_room` native tool
+    # is GONE — the player has no room tool any more. Position is
+    # established automatically every model iteration (before_model),
+    # persisted to knowledge.sqlite3, and pushed to the model as a compact
+    # state block instead of a tool result (see Mud::StateBlock). MUD calls
+    # still go through `dispatch` (RunDSL#dispatch), so they're gated by
+    # the same Registry/`allow:` as every other tool (Phase A). Wired only
+    # if a `mud` MCP server is actually configured, and only if the
+    # sqlite3 gem is installed — a checkout without it still boots, just
+    # without memory (matching the source plan's posture for its own
+    # optional dependency).
     mud_prefix = Boukensha.config.mcp_servers["mud"]&.[](:prefix)
     Boukensha.repl(tui: !no_tui) do
       if mud_prefix
-        mud_tool_name        = ->(name) { [mud_prefix, name].reject(&:empty?).join("__") }
-        room_survey_keywords = {}
+        begin
+          require "boukensha/mud/memory/store"
+          require "boukensha/mud/memory/journal"
+          require "boukensha/mud/hooks"
 
-        tool "inspect_room",
-             description: "Survey the current room: look, exits, and (for each distinct mob) " \
-                           "a threat assessment and condition. Use this in a new room instead of " \
-                           "calling look/exits/consider/examine yourself.",
-             parameters: {} do |**_|
-          Boukensha::Tools::RoomSurvey.new(
+          # Change capture (Phase E) — a time series alongside the snapshot,
+          # off by default (MUD_JOURNAL_DIR). See Memory::Journal's own doc.
+          journal = Boukensha::Mud::Memory::Journal.from_env
+          db_path = File.join(Boukensha.config.dir, "knowledge.sqlite3")
+          store   = Boukensha::Mud::Memory::Store.open(db_path, journal: journal)
+          mud_tool_name = ->(name) { [mud_prefix, name].reject(&:empty?).join("__") }
+
+          self.hooks = Boukensha::Mud::Hooks.new(
             call_tool: ->(name, args) { dispatch(mud_tool_name.call(name), args) },
-            keyword_cache: room_survey_keywords
-          ).call
+            store: store,
+            error_log: Boukensha::ErrorLog.from_env
+          )
+          at_exit { store.close rescue nil }
+        rescue LoadError
+          warn "[boukensha] sqlite3 gem not installed — running without room memory (Phase D). " \
+               "`gem install sqlite3` to enable it."
         end
       end
     end

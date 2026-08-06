@@ -1,0 +1,27 @@
+<h1>Errors</h1>
+<p class="meta">Exceptions the agent caught and logged instead of silently swallowing or crashing (Phase F) — <code>Mud::Hooks</code>' internal rescues, and a top-level safety net in the REPL turn loop.</p>
+
+<% unless error_log_store.enabled? %>
+  <p class="empty">
+    No <code><%= settings.error_log_path %></code> yet — nothing has been logged, or <code>BOUKENSHA_ERROR_LOG</code> isn't set in <code>.boukensha/.env</code>.
+  </p>
+<% else %>
+  <% if @errors.empty? %>
+    <p class="empty">No errors recorded.</p>
+  <% else %>
+    <div class="transcript">
+      <% @errors.each do |e| %>
+        <div class="tool-call tool-error">
+          <div class="tool-name">
+            &#9888; <%= e.error_class %><% if e.context %> &middot; <%= e.context %><% end %>
+            <span class="usage"><%= format_time(e.at) %></span>
+          </div>
+          <pre class="tool-result"><%= h(e.message) %>
+
+<%= h(e.backtrace.join("\n")) %></pre>
+        </div>
+      <% end %>
+    </div>
+    <p class="meta">Showing the last <%= @errors.length %> error<%= "s" unless @errors.length == 1 %>.</p>
+  <% end %>
+<% end %>

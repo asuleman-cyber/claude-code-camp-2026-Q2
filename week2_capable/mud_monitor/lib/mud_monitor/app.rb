@@ -5,6 +5,9 @@ require_relative "session"
 require_relative "ansi"
 require_relative "manager_log"
 require_relative "telnet_log"
+require_relative "knowledge_store"
+require_relative "journal_store"
+require_relative "error_log_store"
 
 module MudMonitor
   # Unified observability for a boukensha+mud_manager run: agent sessions
@@ -22,13 +25,19 @@ module MudMonitor
       File.expand_path("../../../../.boukensha/sessions", __dir__)
     }
     set :manager_dir, ENV["MUD_MONITOR_MANAGER_DIR"] || File.expand_path("../../../../.boukensha/manager", __dir__)
+    set :knowledge_db, ENV["MUD_KNOWLEDGE_DB"] || File.expand_path("../../../../.boukensha/knowledge.sqlite3", __dir__)
+    set :journal_dir, ENV["MUD_JOURNAL_DIR"] || File.expand_path("../../../../.boukensha/journal", __dir__)
+    set :error_log_path, ENV["BOUKENSHA_ERROR_LOG"] || File.expand_path("../../../../.boukensha/error.log", __dir__)
     set :telnet_dir,  ENV["MUD_MONITOR_TELNET_DIR"]  || File.expand_path("../../../../.boukensha/telnet", __dir__)
 
     PER_PAGE = 25
 
     helpers do
-      def manager_store = @manager_store ||= ManagerLogStore.new(settings.manager_dir)
-      def telnet_store  = @telnet_store  ||= TelnetLogStore.new(settings.telnet_dir)
+      def manager_store   = @manager_store   ||= ManagerLogStore.new(settings.manager_dir)
+      def telnet_store    = @telnet_store    ||= TelnetLogStore.new(settings.telnet_dir)
+      def knowledge_store = @knowledge_store ||= KnowledgeStore.new(settings.knowledge_db)
+      def journal_store   = @journal_store   ||= JournalStore.new(settings.journal_dir)
+      def error_log_store = @error_log_store ||= ErrorLogStore.new(settings.error_log_path)
 
       def session_paths
         Dir.glob(File.join(settings.sessions_dir, "*.jsonl")).sort.reverse
@@ -285,6 +294,35 @@ module MudMonitor
       @entries = manager_store.recent(date: @date)
       @live    = manager_store.live?(date: @date) && params[:live] != "0"
       erb :manager
+    end
+
+    get "/knowledge" do
+      @counts = knowledge_store.counts
+      @rooms  = knowledge_store.rooms
+      @entities = knowledge_store.entities
+      @player = knowledge_store.player_state
+      erb :knowledge
+    end
+
+    get "/knowledge/rooms/:id" do
+      id = params[:id].to_i
+      @room = knowledge_store.rooms.find { |r| r["id"] == id }
+      halt 404, "Room not found: #{id}" unless @room
+
+      @exits = knowledge_store.room_exits(id)
+      erb :knowledge_room
+    end
+
+    get "/progression" do
+      @dates   = journal_store.dates
+      @date    = params[:date] if @dates.include?(params[:date])
+      @entries = journal_store.recent(date: @date)
+      erb :progression
+    end
+
+    get "/errors" do
+      @errors = error_log_store.recent
+      erb :errors
     end
 
     get "/telnet" do

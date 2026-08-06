@@ -75,7 +75,8 @@ module Boukensha
 
     register_mcp_servers(registry, cfg, permissions: perms)
 
-    RunDSL.new(registry).instance_eval(&block) if block
+    dsl = RunDSL.new(registry)
+    dsl.instance_eval(&block) if block
     perms.validate_referenced!(registry.tool_names)
 
     be = case backend
@@ -97,7 +98,7 @@ module Boukensha
       model:             model,
       provider:          backend
     })
-    agent   = Agent.new(context: ctx, registry: registry, builder: builder, client: client, logger: logger,
+    agent   = Agent.new(context: ctx, registry: registry, builder: builder, client: client, logger: logger, hooks: dsl.hooks,
                         max_iterations: cfg.agent_max_iterations,
                         max_turn_tokens: cfg.agent_max_turn_tokens,
                         max_output_tokens: (max_output_tokens || cfg.agent_max_output_tokens))
@@ -145,7 +146,8 @@ module Boukensha
 
     servers = register_mcp_servers(registry, cfg, permissions: perms)
 
-    RunDSL.new(registry).instance_eval(&block) if block
+    dsl = RunDSL.new(registry)
+    dsl.instance_eval(&block) if block
     perms.validate_referenced!(registry.tool_names)
 
     be = case backend
@@ -174,6 +176,8 @@ module Boukensha
       builder:    builder,
       client:     client,
       logger:     logger,
+      hooks:      dsl.hooks,
+      error_log:  ErrorLog.from_env,
       max_iterations:    cfg.agent_max_iterations,
       max_turn_tokens:   cfg.agent_max_turn_tokens,
       max_output_tokens: (max_output_tokens || cfg.agent_max_output_tokens),
@@ -240,6 +244,8 @@ require_relative "boukensha/context"
 require_relative "boukensha/errors"
 require_relative "boukensha/permissions"
 require_relative "boukensha/registry"
+require_relative "boukensha/hooks"
+require_relative "boukensha/error_log"
 require_relative "boukensha/prompt_builder"
 require_relative "boukensha/logger"
 require_relative "boukensha/backends/base"
@@ -253,7 +259,7 @@ require_relative "boukensha/agent"
 require_relative "boukensha/run_dsl"
 require_relative "boukensha/repl"
 require_relative "boukensha/tools/mcp"
-require_relative "boukensha/tools/room_survey"
+require_relative "boukensha/mud/room_survey"
 
 # The TUI needs the `charm` gem (bubbletea/lipgloss/bubbles). That gem's
 # ntcharts dependency ships a native extension with no prebuilt Windows

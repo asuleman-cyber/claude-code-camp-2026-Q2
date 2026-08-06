@@ -848,6 +848,40 @@ table.sessions th a:hover {
 .mode-badge.mode-status { background: #eef0f3; color: var(--muted); }
 .mode-badge.mode-inspect{ background: #fff4e5; color: #a15c00; }
 .mode-badge.mode-command{ background: #e6f4ea; color: #1e7e34; }
+.mode-badge.mode-mob    { background: #fff4e5; color: #a15c00; }
+.mode-badge.mode-object { background: #eef4f8; color: #1d5f8a; }
+
+/* Knowledge overview strip */
+.kv-strip {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.kv {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  text-align: center;
+}
+
+.kv-num {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+}
+
+.kv-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 0.15rem;
+}
 
 /* Telnet feed */
 .telnet-feed {

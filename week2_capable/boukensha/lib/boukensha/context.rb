@@ -3,9 +3,9 @@ require_relative "message"
 
 module Boukensha
   class Context
-    attr_reader :system, :messages, :tools, :context_window, :working_dir,
+    attr_reader :system, :tools, :context_window, :working_dir,
                 :turn_tokens, :compaction_threshold
-    attr_accessor :current_tokens
+    attr_accessor :current_tokens, :state_block
 
     def initialize(system:, context_window: 200_000, working_dir: nil, compaction_threshold: 0.85)
       @system               = system
@@ -16,10 +16,24 @@ module Boukensha
       @tools                = {}
       @current_tokens       = 0
       @turn_tokens          = 0
+      @state_block          = nil
     end
 
     def register_tool(tool)
       @tools[tool.name] = tool
+    end
+
+    # The messages a request actually sends. `state_block` (if set — see
+    # Boukensha::Hooks / Mud::Hooks#before_model) is appended as a synthetic
+    # trailing user-role message here, NOT stored in @messages: it is
+    # re-rendered fresh before every model call, so it is never duplicated,
+    # never stale, and never survives to be compacted as if it were history.
+    # Every caller of `context.messages` (every backend's #to_payload, and
+    # the logger) sees it for free — no per-backend plumbing needed.
+    def messages
+      return @messages if @state_block.nil? || @state_block.empty?
+
+      @messages + [Message.new(:user, @state_block, nil)]
     end
 
     def add_message(role, content, tool_use_id: nil)

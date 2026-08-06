@@ -5,11 +5,15 @@ One gem, one binary. `MudManager` has two halves:
 - **Domain** — `MudManager::Session` (a long-lived telnet connection, with
   background buffering, IAC stripping, and the login dance) and
   `MudManager::Primitives` (a stateless table of typed CircleMUD command
-  builders). This is the part any bootcamper who `require "mud_manager"`
-  touches directly.
+  builders, plus a small immortal-only slice — `admin_goto`/`admin_transfer`
+  — used by `week2_capable/bin/reset` to put a test character back at the
+  start, never exposed as MCP tools). This is the part any bootcamper who
+  `require "mud_manager"` touches directly.
 - **Daemon** — `MudManager::Mcp::*` plus the `mud-manager` executable: an MCP
   server over stdio that owns one `Session`, hides connect/login behind the
-  tool boundary, and exposes gameplay as 26 typed MCP tools. This is how every
+  tool boundary, and exposes gameplay as 27 typed MCP tools (including the
+  `inspect` composite — `look` + `exits` in one round trip, added so the
+  agent stops burning two tool calls on every new room). This is how every
   non-Ruby bootcamp track (and the Ruby track too, via `boukensha`) drives a
   MUD — see [`docs/plans/mud_manager/04_mud_manager_mcp_integration.md`](../../docs/plans/mud_manager/04_mud_manager_mcp_integration.md)
   for the full picture and the rest of [`docs/plans/mud_manager/`](../../docs/plans/mud_manager/)
@@ -76,5 +80,19 @@ MUD_NAME=YourCharacterName MUD_PASSWORD=yourpassword ruby examples/live_session_
 Exercise the daemon end-to-end against the fake MUD, no API key required:
 
 ```sh
-ruby ../../week1_baseline/ruby/10_standard_tool_library/examples/mcp_mud_demo.rb --dry
+ruby ../boukensha/examples/mcp_mud_demo.rb --dry
 ```
+
+## Observability
+
+Two logs, off by default, both read by the sibling `mud_monitor` app:
+
+- `MudManager::ManagerLog` — one record per tool call the daemon executes
+  (tool, args, elapsed time, error). Set `MUD_MANAGER_LOG_DIR` to enable.
+- `MudManager::TelnetLog` — every raw byte crossing the socket, both
+  directions, with the login password redacted at the source. Set
+  `MUD_TELNET_LOG_DIR` to enable. This is the more expensive one; leave it
+  off unless you're chasing something specific.
+
+Both are wired into the `mud:` MCP server's `env:` block in whichever
+`settings.yaml` boukensha is using.

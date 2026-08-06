@@ -3,6 +3,7 @@ source "https://rubygems.org"
 gem "sinatra"
 gem "rackup"
 gem "puma"
+gem "sqlite3" # read-only reader of the agent's knowledge.sqlite3 (Phase D)
 
 group :test do
   gem "minitest"

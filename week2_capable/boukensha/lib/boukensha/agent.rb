@@ -13,13 +13,14 @@ module Boukensha
       single next action you would take.
     MSG
 
-    def initialize(context:, registry:, builder:, client:, logger: Logger.new,
+    def initialize(context:, registry:, builder:, client:, logger: Logger.new, hooks: Hooks.new,
                    max_iterations: MAX_ITERATIONS, max_turn_tokens: nil, max_output_tokens: nil)
       @context           = context
       @registry          = registry
       @builder           = builder
       @client            = client
       @logger            = logger
+      @hooks             = hooks
       @max_iterations    = (max_iterations || MAX_ITERATIONS).to_i
       @max_turn_tokens   = max_turn_tokens.to_i      # 0 = disabled
       @max_output_tokens = max_output_tokens
@@ -29,6 +30,7 @@ module Boukensha
     def run
       @context.reset_turn_tokens
       compact_if_needed
+      @hooks.before_turn(context: @context)
 
       loop do
         # Two independent ceilings; stop at whichever trips first. Limits are
@@ -45,6 +47,7 @@ module Boukensha
         end
 
         @iteration += 1
+        @hooks.before_model(context: @context)
         @logger.iteration(n: @iteration, max: @max_iterations)
         @logger.prompt(messages: @context.messages, tools: @context.tools, context_window: @context.context_window)
 
@@ -61,6 +64,7 @@ module Boukensha
           @logger.response(text: text, usage: response["usage"], stop_reason: parsed[:stop_reason], task: nil, backend: @builder.backend)
           @logger.turn_end(reason: "completed", iterations: @iteration, tokens: @context.turn_tokens)
           @context.add_message(:assistant, text)
+          @hooks.after_turn(context: @context, text: text)
           return text
         end
       end
@@ -114,11 +118,13 @@ module Boukensha
       @logger.response(text: text, usage: response["usage"], stop_reason: parsed_wrap[:stop_reason], task: nil, backend: @builder.backend)
       @logger.turn_end(reason: reason, iterations: @iteration, tokens: @context.turn_tokens)
       @context.add_message(:assistant, text)
+      @hooks.after_turn(context: @context, text: text)
       text
     rescue ApiError
       msg = fallback_message(reason)
       @logger.turn_end(reason: reason, iterations: @iteration, tokens: @context.turn_tokens)
       @context.add_message(:assistant, msg)
+      @hooks.after_turn(context: @context, text: msg)
       msg
     end
 
@@ -158,6 +164,11 @@ module Boukensha
 
       @context.add_message(:assistant, content)
 
+      # Fires once, before the first dispatch — the only moment output that
+      # arrived while the model was thinking (the longest gap in the loop)
+      # is still recoverable, per lifecycle_hooks.md / basic_memory.md §5.6.
+      @hooks.before_tools(calls: tool_calls, context: @context)
+
       tool_calls.each do |block|
         name   = block["name"]
         args   = block["input"]
@@ -172,7 +183,13 @@ module Boukensha
           @logger.tool_result(name: name, result: result, ok: false, error: e.message)
         end
 
-        @context.add_message(:tool_result, result.to_s, tool_use_id: use_id)
+        # A hook may replace what the MODEL sees (e.g. a parsed "moved north
+        # -> Market Square" stub instead of the room's full prose) without
+        # touching what was just logged above — the session log/mud_monitor
+        # keep the MUD's exact words regardless.
+        model_result = @hooks.after_tool(name: name, args: args, result: result, context: @context) || result
+
+        @context.add_message(:tool_result, model_result.to_s, tool_use_id: use_id)
       end
     end
   end

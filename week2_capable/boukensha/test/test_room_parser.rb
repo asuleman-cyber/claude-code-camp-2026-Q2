@@ -1,12 +1,12 @@
 require_relative "helper"
-require "boukensha/tools/room_parser"
+require "boukensha/mud/room_parser"
 
 # Fixtures below are verbatim captures from the live CircleMUD this project
 # targets (not hand-written), per the source plan's own testing guidance
 # (docs/plans/week_2/scripted_room_survey.md §8.1: "build the parser tests
 # from these rather than hand-written fixtures").
 class TestRoomParser < Minitest::Test
-  P = Boukensha::Tools::RoomParser
+  P = Boukensha::Mud::RoomParser
 
   # A room with a green (object) entity line and a dark, unnamed exit —
   # real capture, "A Dark Path".

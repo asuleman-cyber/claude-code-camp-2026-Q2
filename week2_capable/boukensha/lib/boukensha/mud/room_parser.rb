@@ -1,36 +1,47 @@
 module Boukensha
-  module Tools
+  module Mud
     # Pure text → Hash. No I/O, no network, no LLM — every field here is
     # mechanically derivable from the MUD's own output, per
     # docs/plans/week_2/scripted_room_survey.md §3.2/§3.3 (colleague repo).
     #
-    # Takes the raw text from the `inspect` MCP tool (mud_manager's
-    # look+exits composite, see Phase A) and splits it into the room's
-    # identity, description, vitals, exit map, and entity lines classified
-    # by color — verified against tbaMUD source (`act.informative.c`):
-    # ground objects print in green (`CCGRN`, `\e[0;32m`), mobs and the room
-    # name itself print in yellow (`CCYEL`, `\e[0;33m`); position (first
-    # line vs. after the exits marker) disambiguates the room name from a
-    # mob.
+    # Was Boukensha::Tools::RoomParser (Phase C); moved under Mud:: in
+    # Phase D per docs/plans/week_2/basic_memory.md §9 — everything that
+    # knows what a MUD is belongs in one explicitly-named namespace, not
+    # spread through `tools/` (which now holds only mcp.rb, matching
+    # boukensha's own "ships no tools of its own" claim).
     #
-    # Deliberately does NOT attempt `look_candidates` (hidden/examinable
-    # nouns in the prose) — that is the one genuinely fuzzy field in the
-    # source plan, and out of scope for this pass (see
-    # docs/plans/week2_catchup_plan.md Phase C).
+    # Reused on TWO kinds of text: a full `inspect` composite (look+exits,
+    # Phase A) when surveying a room, and a bare `move` result (no "==
+    # exits ==" section — split_sections falls back to treating the whole
+    # string as the look portion). Both shapes parse through the same code
+    # path; a move result just yields an empty exit_targets.
+    #
+    # Ground objects print in green (`CCGRN`, `\e[0;32m`), mobs and the room
+    # name itself print in yellow (`CCYEL`, `\e[0;33m`) — verified against
+    # tbaMUD source AND this MUD's own live output (Phase C); position
+    # (first line vs. after the exits marker) disambiguates the room name
+    # from a mob.
+    #
+    # Deliberately does NOT attempt `look_candidates` — out of scope, see
+    # docs/plans/week2_catchup_plan.md Phase C.
     module RoomParser
       YELLOW = "\e[0;33m"
       GREEN  = "\e[0;32m"
       CYAN   = "\e[0;36m"
 
-      ANSI_RE      = /\e\[[0-9;]*m/
-      EXITS_MARKER_RE = /\[\s*Exits:/
-      VITALS_RE    = /(\d+)H\s+(\d+)M\s+(\d+)V/
-      EXIT_LINE_RE = /\A(\w+)\s*-\s*(.+?)\s*\z/
+      ANSI_RE         = /\e\[[0-9;]*m/
+      EXITS_MARKER_RE = /\[\s*Exits:\s*([^\]]*)\]/
+      VITALS_RE       = /(\d+)H\s+(\d+)M\s+(\d+)V/
+      EXIT_LINE_RE    = /\A(\w+)\s*-\s*(.+?)\s*\z/
+
+      DIRECTION_WORDS = {
+        "n" => "north", "e" => "east", "s" => "south", "w" => "west", "u" => "up", "d" => "down"
+      }.freeze
 
       module_function
 
-      # inspect_text: the raw string the `inspect` MCP tool returns —
-      # "== look ==\n<look output>\n\n== exits ==\n<exits output>".
+      # inspect_text: either the `inspect` MCP tool's composite
+      # ("== look ==\n...\n\n== exits ==\n...") or a bare move/look result.
       def parse(inspect_text)
         look_text, exits_text = split_sections(inspect_text.to_s)
 
@@ -38,6 +49,7 @@ module Boukensha
         description_lines = []
         entities          = []
         vitals            = nil
+        exit_letters      = []
         past_exits_marker = false
 
         look_text.split("\r\n").each do |raw_line|
@@ -50,8 +62,9 @@ module Boukensha
             next
           end
 
-          if !past_exits_marker && plain =~ EXITS_MARKER_RE
+          if !past_exits_marker && (m = EXITS_MARKER_RE.match(plain))
             past_exits_marker = true
+            exit_letters = m[1].to_s.split
             next
           end
 
@@ -69,14 +82,36 @@ module Boukensha
           end
         end
 
+        exit_targets = parse_exit_targets(exits_text)
+
         {
           name: name,
           description: description_lines.join(" ").gsub(/\s+/, " ").strip,
           vitals: vitals,
           mobs: entities.select { |e| e[:type] == :mob },
           objects: entities.select { |e| e[:type] == :object },
-          exit_targets: parse_exit_targets(exits_text)
+          exit_targets: exit_targets,
+          # The direction list for fingerprinting (Fingerprint.weak): prefer
+          # exit_targets' keys (full words, from a real survey) since they're
+          # more precise; fall back to the bare `[ Exits: e w ]` letters
+          # (expanded to full words) available even from a move result, at
+          # zero extra cost.
+          exit_directions: exit_targets.any? ? exit_targets.keys : exit_letters.map { |l| DIRECTION_WORDS[l] || l }
         }
+      end
+
+      # True if `text` confidently looks like a successful room
+      # arrival/look — a room name, an exits marker, AND a vitals line all
+      # present. Used to gate the after_tool move-substitution: substitute
+      # only on this whitelist, never on a guess (basic_memory.md §6.2 —
+      # "a wrongly swallowed failure costs a stuck agent").
+      def room_shape?(text)
+        plain = strip_ansi(text.to_s)
+        plain.match?(EXITS_MARKER_RE) && plain.match?(VITALS_RE) && !first_nonblank_line(plain).to_s.strip.empty?
+      end
+
+      def first_nonblank_line(text)
+        text.split("\r\n").map { |l| strip_ansi(l).strip }.find { |l| !l.empty? }
       end
 
       # "== look ==\n...\n\n== exits ==\n..." -> ["...", "..."]. Tolerates

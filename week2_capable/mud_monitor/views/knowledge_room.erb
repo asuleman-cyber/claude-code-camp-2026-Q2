@@ -1,0 +1,45 @@
+<a href="/knowledge" class="back">&larr; All rooms</a>
+
+<h1><%= @room["name"] %></h1>
+<p class="meta">
+  Visited <%= @room["visit_count"] %> time<%= "s" unless @room["visit_count"] == 1 %>
+  &middot; first seen <%= format_time(@room["first_seen_at"]) %>
+  &middot; last seen <%= format_time(@room["last_seen_at"]) %>
+  &middot; <%= @room["surveyed_at"] ? "surveyed" : "not yet surveyed (arrived via move only)" %>
+</p>
+
+<div class="statstrip">
+  <div class="statstrip-total"><%= @room["description"] %></div>
+</div>
+
+<h2>Exits</h2>
+<% if @exits.empty? %>
+  <p class="empty">No exits recorded (room not yet surveyed).</p>
+<% else %>
+  <table class="log-table">
+    <thead>
+      <tr>
+        <th class="nowrap">Direction</th>
+        <th>Destination</th>
+        <th class="nowrap">Known?</th>
+        <th class="nowrap">Traversals</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @exits.each do |e| %>
+        <tr>
+          <td class="nowrap"><%= e["direction"] %></td>
+          <td>
+            <% if e["target_room_id"] %>
+              <a href="/knowledge/rooms/<%= e["target_room_id"] %>"><%= e["target_name"] %></a>
+            <% else %>
+              <%= e["target_name"] || "?" %>
+            <% end %>
+          </td>
+          <td class="nowrap"><%= e["target_room_id"] ? "✓ known" : "? frontier" %></td>
+          <td class="nowrap"><%= e["traversals"] %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
