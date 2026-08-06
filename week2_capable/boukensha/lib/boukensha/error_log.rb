@@ -22,6 +22,17 @@ module Boukensha
 
     def initialize(path)
       @path = path
+      # Eagerly touch the file (mirrors Mud::Memory::Journal#initialize's
+      # eager mkdir_p) so mud_monitor's ErrorLogStore#enabled? — a plain
+      # File.exist? check — can tell "error tracking was turned on for this
+      # run" apart from "never configured." Without this, the file only
+      # appeared lazily on the first #record call, so the two states were
+      # indistinguishable from the filesystem (see ErrorLogStore#enabled?,
+      # week2_capable/mud_monitor/lib/mud_monitor/error_log_store.rb).
+      FileUtils.mkdir_p(File.dirname(@path))
+      FileUtils.touch(@path) unless File.exist?(@path)
+    rescue StandardError
+      nil # must never raise from construction either
     end
 
     def record(error, context: nil)

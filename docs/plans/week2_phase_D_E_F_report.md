@@ -17,6 +17,12 @@ green (`rake test` in each directory). Every scenario below marked "verified liv
 run against the real CircleMUD on `localhost:4000`, not just fixtures — where a real
 bug turned up, it's noted at the point it was found and fixed.
 
+> **Since this report was written**, two of its "try yourself" items — the knowledge
+> map and player tracking — were actually built, following
+> [`player_map_plan.md`](player_map_plan.md). Both are flagged inline below where
+> they're described as unbuilt. Totals are now `boukensha` 132/364,
+> `mud_manager` 37/216, `mud_monitor` 62/219.
+
 ---
 
 ## Phase D — the agent gets memory (done, in full)
@@ -145,11 +151,14 @@ calls: []                                    # zero MUD round trips
 - **Turn on Phase A's `allow:` permissions** on the live profile — it's built and
   tested but left off. Once you do, `inspect_room` doesn't need adding to any
   allowlist — it doesn't exist anymore; the player has no room tool at all now.
-- **Knowledge map.** A visual room/exit graph laid out on a grid by real position
-  (not a force-directed layout — "north is north" matters more than a generic graph
-  library's ranking). `Store#all_rooms` + `#room_exits` already return everything a
-  BFS-based grid layout would need; this is genuinely just a rendering task on top of
-  data that already exists.
+- ~~**Knowledge map.**~~ **Built since** — `/knowledge/map`, per
+  [`player_map_plan.md`](player_map_plan.md) Part 2. The prediction that this was
+  "genuinely just a rendering task on top of data that already exists" held: the only
+  store-side addition was `KnowledgeStore#all_exits` (the whole graph in one query
+  instead of N+1 per-room reads). It did need one thing the plan didn't anticipate —
+  MUD geography isn't euclidean, so two rooms can want the same grid cell; the loser
+  takes the nearest free cell and renders dashed rather than stacking invisibly behind
+  the winner.
 - **Ambiguous-fingerprint handling.** `Store#find_room_by_weak_fingerprint` already
   returns `:ambiguous` distinctly from `nil` — `Mud::Hooks#resolve_room!` currently
   treats them the same; that's the one line to change, plus building out the
@@ -205,21 +214,20 @@ Mud Monitor gained a **Progression** page (`/progression`,
   `Config`'s directory resolution, the CLI, and Mud Monitor's profile selector, which
   is a bigger, more invasive change than the remaining time budget allowed for doing
   carefully.
-- **A fuller player schema (score/skills/inventory/equipment).** Worth being honest
-  here: a stock CircleMUD "should" print certain things a certain way, and this
-  specific build almost certainly doesn't match that exactly (skill proficiency
-  might be a word, not a percentage; an empty pack might read differently than
-  expected). None of that was verified against this server. `player_state`'s
-  existing hp/mana/move/level/gold/exp/position columns (built in Phase D) are live
-  and journaled; the richer score-sheet/inventory/equipment tables are not. **If you
-  build this:** capture real `score`/`inventory`/`equipment`/`practice` output from
-  this server first (the same way Phase C's room fixtures were captured from real
-  play) — don't assume the wording matches anything you've seen before.
+- ~~**A fuller player schema (score/skills/inventory/equipment).**~~ **Built since**,
+  except skills — see below. The blocker named here was real and was the right call:
+  the fix was simply to *do* the capture step first. Doing it caught two things a
+  from-memory implementation would have got wrong — equipment slots are **not**
+  one-per-slot (two finger, two neck, two wrist slots all print the same bracketed
+  label, so the schema's `UNIQUE` constraint needed a `" (2)"` suffix to survive), and
+  `score` reports quest points on two different lines with two different spellings.
+  Skills/spells are still unbuilt for exactly the original reason: no `practice`
+  capture yet, and proficiency may print as a word rather than a percentage.
 
 ### Try yourself
 
-- Add a `player_inventory` table (the simplest additive slice of this) once you've
-  captured what `inventory`/`score` actually print here.
+- ~~Add a `player_inventory` table~~ — **built since** (plus `player_equipment` and the
+  score-sheet columns). Capturing the real output first was, again, what made it work.
 - `Journal` is generic — nothing stops you from calling `.upsert`/`.event` from
   anywhere else that writes to `Store`, not just the two call sites wired in now (e.g.
   `entity` threat/health changes, once you decide that's worth a time series too).
@@ -283,15 +291,18 @@ Mud Monitor gained an **Errors** page (`/errors`,
 In priority order, if you want to keep pushing on this:
 
 1. **Turn on Phase A's `allow:` permissions** on the live profile — it's built, tested,
-   and just needs an `allow:` block in `.boukensha/settings.yaml`.
+   and just needs an `allow:` block in `.boukensha/settings.yaml`. Still the top item.
 2. **Play through a real session** with Phase D memory live and watch the Knowledge
    tab fill in — this is the single best way to find out whether the weak-fingerprint
    simplification actually causes problems in practice, before spending time on the
-   fuller identity resolver.
-3. **Knowledge map** (visual room graph) — genuinely just a rendering task on data
-   that already exists (`Store#all_rooms`/`#room_exits`), no new agent-side work.
-4. If you want Phase E's player tracking, **capture real `score`/`inventory`
-   output first**, the same way every other piece of this project's parsing was built
-   from real captures rather than assumption — that's the pattern that's worked every
-   time it's been followed in this codebase, and the one place it would have been
-   skipped (guessing at destructive admin commands) is exactly the piece that got cut.
+   fuller identity resolver. Now more useful than when this was written: `/knowledge/map`
+   makes duplicate-room symptoms visible at a glance instead of buried in a table.
+3. ~~**Knowledge map**~~ and ~~**player tracking**~~ — both built since (see the notes
+   above). What replaced them at the top of the list: **`plan_route`**, a read-only
+   tool that searches the known room graph instead of the agent rediscovering paths
+   one move at a time. The graph is now both complete enough and *visible* enough to
+   make that worth building.
+4. **Skills/spells tracking** — the last unbuilt slice of player state. Same recipe
+   as the rest: capture real `practice` output first, then write the parser against
+   it. That order is the one thing in this project that has worked every single time
+   it's been followed, and every time it was skipped, something was wrong.

@@ -6,6 +6,7 @@ require_relative "ansi"
 require_relative "manager_log"
 require_relative "telnet_log"
 require_relative "knowledge_store"
+require_relative "map_layout"
 require_relative "journal_store"
 require_relative "error_log_store"
 
@@ -195,10 +196,41 @@ module MudMonitor
         %(<span class="#{klass}">+#{text}</span>)
       end
 
+      # room_id -> [direction, ...] of grid sides to draw as connected — one
+      # entry per MapLayout edge endpoint, plus the opposite side on the
+      # far end, so a room shows a border on both sides of a shared wall
+      # even though only one of the two rooms' exits rows produced the
+      # edge. Rendering-only; MapLayout itself stays edge-shaped.
+      OPPOSITE_DIRECTION = { "north" => "south", "south" => "north", "east" => "west", "west" => "east" }.freeze
+
+      def connection_sides(edges)
+        sides = Hash.new { |h, k| h[k] = [] }
+        edges.each do |e|
+          sides[e.from_id] << e.direction
+          sides[e.to_id] << OPPOSITE_DIRECTION.fetch(e.direction)
+        end
+        sides
+      end
+
       def live_badge(live)
         return "" unless live
 
         %(<span class="live-badge">&#9679; live</span>)
+      end
+
+      # /knowledge, /knowledge/player, and /knowledge/map share one URL
+      # namespace and one data source (knowledge.sqlite3) — a persistent
+      # tab strip rather than a "back" link or a sentence of inline text
+      # buried in the Overview page's body. Same snippet-helper idiom as
+      # live_badge/progress_bar above.
+      KNOWLEDGE_TABS = [["Overview", "/knowledge"], ["Player", "/knowledge/player"], ["Map", "/knowledge/map"]].freeze
+
+      def knowledge_tabs
+        links = KNOWLEDGE_TABS.map do |label, path|
+          cls = request.path_info == path ? ' class="active"' : ""
+          %(<a href="#{path}"#{cls}>#{label}</a>)
+        end
+        %(<nav class="subnav">#{links.join}</nav>)
       end
 
       # Sinatra's dev-mode HostAuthorization aside, a live page just needs to
@@ -304,6 +336,22 @@ module MudMonitor
       erb :knowledge
     end
 
+    get "/knowledge/player" do
+      @player    = knowledge_store.player_state
+      @inventory = knowledge_store.player_inventory
+      @equipment = knowledge_store.player_equipment
+      @rooms     = knowledge_store.rooms
+      erb :knowledge_player
+    end
+
+    get "/knowledge/map" do
+      @layout = MapLayout.layout(rooms: knowledge_store.rooms, exits: knowledge_store.all_exits)
+      @sides  = connection_sides(@layout.edges)
+      @player = knowledge_store.player_state
+      @live   = knowledge_store.enabled? && params[:live] != "0"
+      erb :knowledge_map
+    end
+
     get "/knowledge/rooms/:id" do
       id = params[:id].to_i
       @room = knowledge_store.rooms.find { |r| r["id"] == id }
@@ -333,6 +381,11 @@ module MudMonitor
       entries  = entries.select { |e| e.dir == @dir } if @dir
       @entries = entries
       @live    = telnet_store.live?(date: @date) && params[:live] != "0"
+      # #recent returns entries in file order (chronological ascending, not
+      # reversed like ErrorLogStore#recent) — the last one is the most
+      # recent chunk. Used to tell "idle" (nothing to poll) apart from
+      # "the log has actually gone stale" when @live is false.
+      @last_entry_at = @entries.last&.at
       erb :telnet
     end
   end

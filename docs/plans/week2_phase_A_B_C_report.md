@@ -15,6 +15,10 @@ the MUD client), not a port of his.
 `mud_manager` 22 runs / 163 assertions — all green. Everything marked "verified live"
 below was run against the real CircleMUD on `localhost:4000`, not just fixtures.
 
+> Those are the numbers *as of Phase C*, kept as a snapshot rather than updated —
+> later work grew them (current totals live in the D/E/F report). Where later
+> phases moved or deleted something described here, the row says so.
+
 ---
 
 ## Before Phase A: the foundation
@@ -164,8 +168,8 @@ parser could do the same job with zero model calls. That turned out to be right.
 | Piece | File | What it does |
 |---|---|---|
 | `RoomParser` | `boukensha/lib/boukensha/tools/room_parser.rb` (later moved under `Mud::` in the next phase) | Pure text → Hash, no I/O. Splits the `inspect` composite's output into name, description, vitals, exit map, and mob/object lines — classified by their ANSI color, verified against real captures rather than assumed. |
-| `RoomSurvey` | `boukensha/lib/boukensha/tools/room_survey.rb` | `poll` → `inspect` → classify → `consider`/`examine` per **distinct** mob (deduplicated, so three identical mobs cost one round-trip pair, not three) → a compact summary. Zero LLM calls anywhere in the sequence. |
-| `inspect_room` native tool | wired at the agent entrypoint | Drives `RoomSurvey` through the same permission-gated dispatch path every other tool uses (Phase A's engine), so it's subject to the same `allow:` rules rather than being a special ungated case. |
+| `RoomSurvey` | `boukensha/lib/boukensha/tools/room_survey.rb` (moved under `Mud::` in the next phase, same as `RoomParser`) | `poll` → `inspect` → classify → `consider`/`examine` per **distinct** mob (deduplicated, so three identical mobs cost one round-trip pair, not three) → a compact summary. Zero LLM calls anywhere in the sequence. |
+| `inspect_room` native tool | wired at the agent entrypoint | Drives `RoomSurvey` through the same permission-gated dispatch path every other tool uses (Phase A's engine), so it's subject to the same `allow:` rules rather than being a special ungated case. **Deleted in Phase D** — once hooks establish position automatically every iteration, the agent doesn't need a room tool at all. It doesn't exist in the current code. |
 
 ### Real fixtures, not hand-written ones
 

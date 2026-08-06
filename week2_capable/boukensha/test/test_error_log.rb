@@ -44,7 +44,23 @@ class TestErrorLog < Minitest::Test
   end
 
   def test_record_never_raises_even_if_the_path_is_unwritable
-    log = Boukensha::ErrorLog.new("Z:/does/not/exist/error.log")
+    log = Boukensha::ErrorLog.new("Z:/does/not/exist/error.log") # construction must not raise either
     log.record(RuntimeError.new("boom")) # must not raise
+  end
+
+  def test_new_eagerly_touches_the_file_before_any_error_is_recorded
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "error.log")
+      refute File.exist?(path)
+
+      Boukensha::ErrorLog.new(path)
+
+      # Mirrors Memory::Journal#initialize's eager mkdir_p — makes
+      # File.exist?(path) (ErrorLogStore#enabled? in mud_monitor) a
+      # reliable "error tracking was turned on" signal, not "at least one
+      # error has happened."
+      assert File.exist?(path)
+      assert_empty File.read(path)
+    end
   end
 end

@@ -171,6 +171,102 @@ module Boukensha
           )
         end
 
+        # ---------- player score/inventory/equipment (player_map_plan.md) --
+
+        # Same upsert-on-player_state shape as update_player_state (that
+        # method is already fully generic over column names — a `score`
+        # reading just happens to populate more of them). A distinct method
+        # exists so a score-refresh call site in Mud::Hooks reads as what it
+        # is, per plan Part 1 Step 4.
+        def update_player_score(fields)
+          update_player_state(fields)
+        end
+
+        def player_inventory
+          @db.execute("SELECT * FROM player_inventory ORDER BY descr")
+        end
+
+        def player_equipment
+          @db.execute("SELECT * FROM player_equipment ORDER BY slot")
+        end
+
+        # Reconciles the whole carried-items list against what's stored:
+        # upserts every descr still present, deletes every descr that
+        # dropped out. `items`: [{ descr:, keyword:, quantity: }, ...]
+        # (Mud::PlayerParser#parse_inventory's shape). Journals a discrete
+        # `add`/`remove` event per descr that actually appeared/disappeared
+        # — a quantity-only change on an already-known item is not an event,
+        # just an upsert (per plan Step 4).
+        def replace_inventory!(items)
+          now = now_iso
+          incoming = items.map { |i| i[:descr] }
+
+          @db.execute("SELECT descr FROM player_inventory").each do |row|
+            descr = row["descr"]
+            next if incoming.include?(descr)
+
+            @db.execute("DELETE FROM player_inventory WHERE descr = ?", [descr])
+            @journal&.event(stream: "inventory", op: "remove", descr: descr)
+          end
+
+          items.each do |item|
+            existing = @db.execute("SELECT id FROM player_inventory WHERE descr = ?", [item[:descr]]).first
+            if existing
+              @db.execute(
+                "UPDATE player_inventory SET keyword = ?, quantity = ?, last_seen_at = ? WHERE id = ?",
+                [item[:keyword], item[:quantity] || 1, now, existing["id"]]
+              )
+            else
+              @db.execute(
+                "INSERT INTO player_inventory (descr, keyword, quantity, first_seen_at, last_seen_at) " \
+                "VALUES (?, ?, ?, ?, ?)",
+                [item[:descr], item[:keyword], item[:quantity] || 1, now, now]
+              )
+              @journal&.event(stream: "inventory", op: "add", descr: item[:descr])
+            end
+          end
+        end
+
+        # Same reconciliation as replace_inventory!, keyed by `slot`
+        # (UNIQUE — one item per slot, see Schema v2) rather than `descr`.
+        # A slot whose occupant changed (a swap, not a bare add/remove)
+        # journals both an `unequip` of the old item and an `equip` of the
+        # new one. `items`: [{ slot:, descr:, keyword: }, ...]
+        # (Mud::PlayerParser#parse_equipment's shape).
+        def replace_equipment!(items)
+          now = now_iso
+          incoming = items.map { |i| i[:slot] }
+
+          @db.execute("SELECT slot FROM player_equipment").each do |row|
+            slot = row["slot"]
+            next if incoming.include?(slot)
+
+            @db.execute("DELETE FROM player_equipment WHERE slot = ?", [slot])
+            @journal&.event(stream: "equipment", op: "unequip", slot: slot)
+          end
+
+          items.each do |item|
+            existing = @db.execute("SELECT id, descr FROM player_equipment WHERE slot = ?", [item[:slot]]).first
+            if existing
+              if existing["descr"] != item[:descr]
+                @journal&.event(stream: "equipment", op: "unequip", slot: item[:slot], descr: existing["descr"])
+                @journal&.event(stream: "equipment", op: "equip", slot: item[:slot], descr: item[:descr])
+              end
+              @db.execute(
+                "UPDATE player_equipment SET descr = ?, keyword = ?, last_seen_at = ? WHERE id = ?",
+                [item[:descr], item[:keyword], now, existing["id"]]
+              )
+            else
+              @db.execute(
+                "INSERT INTO player_equipment (slot, descr, keyword, first_seen_at, last_seen_at) " \
+                "VALUES (?, ?, ?, ?, ?)",
+                [item[:slot], item[:descr], item[:keyword], now, now]
+              )
+              @journal&.event(stream: "equipment", op: "equip", slot: item[:slot], descr: item[:descr])
+            end
+          end
+        end
+
         # ---------- overview (Mud Monitor's knowledge tab) ------------------
 
         def counts

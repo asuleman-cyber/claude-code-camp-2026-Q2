@@ -13,6 +13,10 @@
     chasing something specific.
   </p>
 <% else %>
+  <% if !@live && @last_entry_at %>
+    <p class="banner banner-warn">No new traffic since <%= format_time(@last_entry_at) %> &mdash; the mud-manager connection may be idle or disconnected.</p>
+  <% end %>
+
   <div class="log-toolbar">
     <% if @dates.length > 1 %>
       <form method="get" action="/telnet" class="date-form">

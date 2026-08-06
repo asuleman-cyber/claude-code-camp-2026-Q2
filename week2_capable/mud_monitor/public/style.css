@@ -64,6 +64,37 @@ body {
   border-bottom: 2px solid var(--accent);
 }
 
+/* Secondary tab strip for the Knowledge/Player/Map page family — same
+   bottom-border active idiom as .topnav a.active, scoped to the page body
+   rather than the dark topbar (player_map_plan.md follow-up: promote Map
+   out of an inline text link). */
+.subnav {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.subnav a {
+  display: inline-block;
+  padding: 0.5rem 0.1rem;
+  margin-bottom: -1px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+}
+
+.subnav a:hover {
+  color: var(--text);
+}
+
+.subnav a.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 main {
   max-width: 980px;
   margin: 0 auto;
@@ -931,4 +962,106 @@ table.sessions th a:hover {
 .telnet-redacted .telnet-text {
   color: #e5c07b;
   font-style: italic;
+}
+
+/* Knowledge map (player_map_plan.md Part 2) */
+.map-grid-wrap {
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.map-grid {
+  display: grid;
+  grid-auto-rows: minmax(72px, auto);
+  grid-auto-columns: minmax(140px, auto);
+  gap: 6px;
+  width: max-content;
+}
+
+.map-room {
+  position: relative;
+  /* Darker/thicker than the app's default --border (#c2c8d0, only ~1.3:1
+     against --panel) so a room card reads as a solid box on its own,
+     before any connection highlighting is even considered. */
+  border: 1.5px solid #9aa4af;
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 0.5rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.map-room a {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.map-room a:hover {
+  text-decoration: underline;
+}
+
+.map-room.current {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+/* A room whose true grid cell was already taken (non-euclidean geography —
+   see MapLayout's module doc). Dashed, so its position reads as "roughly
+   here" rather than surveyed fact. Deliberately not a colour change: the
+   colour channel is already spoken for by connections and the current-room
+   ring, and displacement is orthogonal to both. */
+.map-room.displaced {
+  border-style: dashed;
+}
+
+.map-room.connected-north { border-top-color: var(--accent); border-top-width: 4px; }
+.map-room.connected-south { border-bottom-color: var(--accent); border-bottom-width: 4px; }
+.map-room.connected-east  { border-right-color: var(--accent); border-right-width: 4px; }
+.map-room.connected-west  { border-left-color: var(--accent); border-left-width: 4px; }
+
+.map-badges {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Legend row inside the map's .statstrip summary panel. */
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.85rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--panel);
+  border: 1.5px solid #9aa4af;
+}
+
+.legend-swatch.legend-connection {
+  border-left: 4px solid var(--accent);
+}
+
+.legend-swatch.legend-current {
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.legend-swatch.legend-displaced {
+  border-style: dashed;
+}
+
+.legend-badge.map-badges {
+  position: static;
+  font-size: 0.85rem;
 }

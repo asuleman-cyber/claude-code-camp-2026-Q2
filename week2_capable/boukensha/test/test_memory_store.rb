@@ -113,6 +113,52 @@ class TestMemoryStore < Minitest::Test
     assert_equal 1, counts[:rooms]
     assert_equal 1, counts[:entities]
   end
+
+  def test_update_player_score_writes_the_new_columns
+    store.update_player_score(age: 18, armor_class: "39/10", alignment: 12, exp_to_next_level: 1942, quest_points: 0)
+
+    state = store.player_state
+    assert_equal 18, state["age"]
+    assert_equal "39/10", state["armor_class"]
+    assert_equal 12, state["alignment"]
+    assert_equal 1942, state["exp_to_next_level"]
+    assert_equal 0, state["quest_points"]
+  end
+
+  def test_replace_inventory_upserts_and_deletes
+    store.replace_inventory!([{ descr: "a torch", keyword: "torch", quantity: 1 }])
+    assert_equal ["a torch"], store.player_inventory.map { |i| i["descr"] }
+
+    store.replace_inventory!([{ descr: "a torch", keyword: "torch", quantity: 2 },
+                               { descr: "a rope", keyword: "rope", quantity: 1 }])
+    inventory = store.player_inventory
+    assert_equal ["a rope", "a torch"], inventory.map { |i| i["descr"] }.sort
+    assert_equal 2, inventory.find { |i| i["descr"] == "a torch" }["quantity"]
+
+    store.replace_inventory!([{ descr: "a rope", keyword: "rope", quantity: 1 }])
+    assert_equal ["a rope"], store.player_inventory.map { |i| i["descr"] }
+  end
+
+  def test_replace_equipment_upserts_and_deletes_by_slot
+    store.replace_equipment!([{ slot: "wielded", descr: "a small sword", keyword: "sword" }])
+    assert_equal "a small sword", store.player_equipment.first["descr"]
+
+    store.replace_equipment!([{ slot: "wielded", descr: "a big axe", keyword: "axe" }])
+    equipment = store.player_equipment
+    assert_equal 1, equipment.length # still one row for the slot, not two
+    assert_equal "a big axe", equipment.first["descr"]
+
+    store.replace_equipment!([])
+    assert_empty store.player_equipment
+  end
+
+  def test_replace_equipment_disambiguated_slots_stay_independent
+    store.replace_equipment!([
+      { slot: "worn on finger", descr: "a leather ring", keyword: "ring" },
+      { slot: "worn on finger (2)", descr: "a leather ring", keyword: "ring" }
+    ])
+    assert_equal 2, store.player_equipment.length
+  end
 end
 
 class TestMemoryStoreJournal < Minitest::Test
@@ -151,5 +197,34 @@ class TestMemoryStoreJournal < Minitest::Test
     store.update_player_state(hp: 20) # must not raise
     assert_equal 20, store.player_state["hp"]
     store.close
+  end
+
+  def test_inventory_changes_are_journaled_as_add_and_remove
+    Dir.mktmpdir do |dir|
+      journal = Boukensha::Mud::Memory::Journal.new(dir)
+      store = Boukensha::Mud::Memory::Store.new(":memory:", journal: journal)
+
+      store.replace_inventory!([{ descr: "a torch", keyword: "torch", quantity: 1 }])
+      store.replace_inventory!([{ descr: "a torch", keyword: "torch", quantity: 2 }]) # quantity-only: no event
+      store.replace_inventory!([]) # dropped
+
+      records = Dir.glob(File.join(dir, "*.jsonl")).flat_map { |f| File.readlines(f).map { |l| JSON.parse(l) } }
+      assert_equal %w[add remove], records.map { |r| r["op"] }
+      store.close
+    end
+  end
+
+  def test_equipment_swap_is_journaled_as_unequip_then_equip
+    Dir.mktmpdir do |dir|
+      journal = Boukensha::Mud::Memory::Journal.new(dir)
+      store = Boukensha::Mud::Memory::Store.new(":memory:", journal: journal)
+
+      store.replace_equipment!([{ slot: "wielded", descr: "a small sword", keyword: "sword" }])
+      store.replace_equipment!([{ slot: "wielded", descr: "a big axe", keyword: "axe" }])
+
+      records = Dir.glob(File.join(dir, "*.jsonl")).flat_map { |f| File.readlines(f).map { |l| JSON.parse(l) } }
+      assert_equal %w[equip unequip equip], records.map { |r| r["op"] }
+      store.close
+    end
   end
 end

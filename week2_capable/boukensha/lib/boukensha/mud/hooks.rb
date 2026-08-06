@@ -3,6 +3,7 @@ require_relative "room_parser"
 require_relative "room_survey"
 require_relative "fingerprint"
 require_relative "state_block"
+require_relative "player_parser"
 
 module Boukensha
   module Mud
@@ -40,6 +41,23 @@ module Boukensha
       VITALS_RE     = /(\d+)H\s+(\d+)M\s+(\d+)V/
       MOVE_TOOL_KEY = "move" # the only tool whose output is fingerprinted (see class doc)
 
+      # Player tracking (docs/plans/player_map_plan.md Part 1 Step 5):
+      # `score` is refreshed once per new-room survey (piggybacking on the
+      # round trips that step already spends, per that step's own note);
+      # inventory/equipment are refreshed when one of these tools was just
+      # dispatched — mirrors how vitals-scraping already piggybacks on
+      # existing traffic instead of polling every turn. All three go
+      # through `send_raw` (there is no dedicated MCP tool for them).
+      #
+      # Change-on-write alone is not enough, though: a character logs in
+      # already wearing a full kit, and an agent that never calls an item
+      # tool would leave player_equipment empty forever while the player
+      # visibly wears eighteen things. So the FIRST survey of a process
+      # also syncs both lists once (see @items_synced) — the cold-start
+      # read that gives the change-triggered refreshes something true to
+      # start diffing against.
+      ITEM_TOOL_KEYS = %w[get_item drop_item equip_item].freeze
+
       # error_log: optional Boukensha::ErrorLog (Phase F — error_log.md).
       # Every rescue below used to just swallow the exception (correctly —
       # a broken hook must degrade the agent to "no memory," never crash
@@ -55,6 +73,7 @@ module Boukensha
         @current_room_id     = nil
         @last_events         = nil
         @last_entities       = []
+        @items_synced        = false # cold-start inventory/equipment read (see ITEM_TOOL_KEYS)
       end
 
       def before_tools(calls:, context:)
@@ -67,6 +86,7 @@ module Boukensha
 
       def after_tool(name:, args:, result:, context:)
         scrape_vitals(result)
+        refresh_player_items! if item_tool?(name)
         return unless move_tool?(name)
         return unless RoomParser.room_shape?(result)
 
@@ -92,6 +112,46 @@ module Boukensha
 
       def move_tool?(name)
         name.to_s.split("__").last == MOVE_TOOL_KEY
+      end
+
+      def item_tool?(name)
+        ITEM_TOOL_KEYS.include?(name.to_s.split("__").last)
+      end
+
+      # Own rescue (like scrape_vitals) rather than relying solely on
+      # after_tool's outer one — a failed refresh here must not affect
+      # whether the *move* substitution below still happens on the same
+      # call (item tools and move are mutually exclusive per call, but the
+      # degrade-locally posture matches the rest of this file either way).
+      def refresh_player_items!
+        inventory_text = @call_tool.call("send_raw", { "raw" => "inventory" })
+        @store.replace_inventory!(PlayerParser.parse_inventory(inventory_text))
+
+        equipment_text = @call_tool.call("send_raw", { "raw" => "equipment" })
+        @store.replace_equipment!(PlayerParser.parse_equipment(equipment_text))
+
+        @items_synced = true
+      rescue StandardError => e
+        @error_log&.record(e, context: "Mud::Hooks#refresh_player_items!")
+        nil
+      end
+
+      # Two extra round trips, once per process, on the first survey only —
+      # not once per new room. Without this the item tables stay empty for
+      # any run where the agent never picks anything up (see ITEM_TOOL_KEYS).
+      def sync_player_items_once!
+        refresh_player_items! unless @items_synced
+      end
+
+      # Called once per new-room survey (see survey_and_persist!) — that's
+      # already the moment the loop spends extra round trips, so a `score`
+      # here adds no cost to the common "known room, zero calls" path.
+      def refresh_player_score!
+        text = @call_tool.call("send_raw", { "raw" => "score" })
+        @store.update_player_score(PlayerParser.parse_score(text))
+      rescue StandardError => e
+        @error_log&.record(e, context: "Mud::Hooks#refresh_player_score!")
+        nil
       end
 
       def scrape_vitals(text)
@@ -181,6 +241,9 @@ module Boukensha
           entity_id = @store.upsert_entity(kind: "object", descr: o[:text], keyword: o[:keyword])
           @store.upsert_sighting(entity_id: entity_id, room_id: room_id)
         end
+
+        refresh_player_score!
+        sync_player_items_once!
 
         @last_events   = data[:events_text]
         @last_entities = data[:appraisals].map { |a| { text: a[:text], kind: "mob", threat: a[:threat] } } +

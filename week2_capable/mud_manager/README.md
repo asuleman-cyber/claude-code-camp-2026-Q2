@@ -69,6 +69,15 @@ rake test
 Uses `MudManager::FakeMud`, an in-process CircleMUD stand-in — no live MUD or
 credentials needed.
 
+**Keep `FakeMud`'s prompt in sync with the real server's.** `Session`
+recognises the end of a command's output by matching the prompt's vitals
+(`Session::PROMPT_SENTINEL`, e.g. `22H 100M 83V (news) (motd) > `). If the
+fake writes a prompt that doesn't match, every dispatcher call in the suite
+silently falls through to the timeout-and-drain fallback: tests still pass,
+100 seconds slower, exercising the error path instead of the real one. That
+divergence is also what let a real truncation bug survive — a fake that
+can't reproduce the wire format can't reproduce its bugs either.
+
 ## Examples
 
 Test the live session:

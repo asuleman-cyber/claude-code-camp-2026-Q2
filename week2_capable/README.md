@@ -171,8 +171,9 @@ rendered telnet page.
 **Not built** (see `mud_monitor/README.md` for the full list): SSE, the
 `diffs/dropped`/`diffs/reshaped` derived views, exact tool-call-to-manager-
 record correlation IDs, world-data pages, and the `Boukensha::Logger`
-task-stack fix (Amendment A — `inspect_room` currently still opens a second
-session file; out of scope until Phase C adds `inspect_room`).
+task-stack fix (Amendment A — at the time, `inspect_room` opened a second
+session file; that tool no longer exists as of Phase D, so the symptom is
+gone even though the underlying task-stack behaviour is unchanged).
 
 ## Phase C — fix the actual navigation problem (done)
 
@@ -207,6 +208,11 @@ already decided to skip that detour).
   (`cfg.mcp_servers["mud"][:prefix]`), not hardcoded, so it stays correct
   if `settings.yaml` ever renames it. The keyword cache is a closure
   variable scoped to one REPL session.
+  **Deleted in Phase D** — kept in this Phase C writeup because the
+  `RunDSL#dispatch` seam it introduced is what `Mud::Hooks` was later wired
+  through. Once hooks establish the agent's position automatically on every
+  model iteration, a room tool has nothing left to do: the player now has no
+  room tool at all. Don't go looking for it in the code.
 
 **Simplification versus the source plan:** no ranked-candidate retry on a
 keyword miss (the plan's §3.4 "retry right-to-left, give up after 2

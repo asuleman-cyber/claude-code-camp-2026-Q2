@@ -158,14 +158,27 @@ module MudManager
       end
     end
 
-    # CircleMUD terminates every command response with a prompt that ends in
-    # "> " (greater-than space). Waiting for that sentinel is faster and more
-    # deterministic than relying on a silence window — it returns as soon as
-    # the server signals it has finished processing the command.
+    # CircleMUD terminates every command response with a prompt. Waiting for
+    # it is faster and more deterministic than relying on a silence window —
+    # it returns as soon as the server signals it has finished the command.
+    #
+    # The prompt is matched by its vitals ("22H 100M 83V (news) (motd) > "),
+    # NOT by the bare "> " it ends with. A bare "> " is not unique to the
+    # prompt: `equipment` opens every line with a slot label, and
+    # "<used as light> " contains "> " forty characters into the *first*
+    # line of output. Matching that truncated the entire response to
+    # "You are using:\r\n<used as light> " — the reply parsed as zero items,
+    # silently, because a short valid-looking string is not an error. Any
+    # command whose output contains an angle bracket followed by a space had
+    # the same problem.
+    #
+    # This is the same "\d+H \d+M \d+V" shape the agent side already relies
+    # on to scrape vitals, so it is not a new assumption about the server,
+    # just an existing one applied where it was missing.
     #
     # Falls back to draining the buffer if the prompt is never seen within
     # the timeout (e.g. during combat when extra async lines may slip in).
-    PROMPT_SENTINEL = "> "
+    PROMPT_SENTINEL = /\d+H\s+\d+M\s+\d+V[^\r\n]*>\s/
 
     def read_until_prompt(timeout: nil)
       read_until(PROMPT_SENTINEL, timeout: timeout)

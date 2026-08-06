@@ -38,6 +38,15 @@ module MudMonitor
       with_db { |d| d.execute("SELECT * FROM room_exits WHERE room_id = ? ORDER BY direction", [room_id]) }
     end
 
+    # Every room_exits row across the whole known world, in one query — the
+    # map (player_map_plan.md Part 2 Step 8) needs the whole graph at once,
+    # unlike #room_exits' per-room reads.
+    def all_exits
+      return [] unless enabled?
+
+      with_db { |d| d.execute("SELECT * FROM room_exits") }
+    end
+
     def entities
       return [] unless enabled?
 
@@ -60,6 +69,25 @@ module MudMonitor
       return nil unless enabled?
 
       with_db { |d| d.execute("SELECT * FROM player_state WHERE id = 1").first }
+    end
+
+    # player_map_plan.md Part 1 Step 6 — mirrors #rooms/#entities above.
+    # Empty (not an error) on a knowledge.sqlite3 from before Schema v2;
+    # SQLite reports a missing table the same way as a missing file here.
+    def player_inventory
+      return [] unless enabled?
+
+      with_db { |d| d.execute("SELECT * FROM player_inventory ORDER BY descr") }
+    rescue SQLite3::SQLException
+      []
+    end
+
+    def player_equipment
+      return [] unless enabled?
+
+      with_db { |d| d.execute("SELECT * FROM player_equipment ORDER BY slot") }
+    rescue SQLite3::SQLException
+      []
     end
 
     private

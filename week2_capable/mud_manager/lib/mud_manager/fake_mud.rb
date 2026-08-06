@@ -4,9 +4,18 @@ require "thread"
 module MudManager
   # In-process CircleMUD stand-in: walks the same login dance
   # MudManager::Session#login expects, then echoes whatever it's sent as
-  # "You do: <command>" followed by a prompt ending in "> ". It exists so the
-  # daemon, its clients, and boukensha's MCP layer can be tested offline, with
-  # no live MUD and no credentials. Never used in a real run.
+  # "You do: <command>" followed by a prompt. It exists so the daemon, its
+  # clients, and boukensha's MCP layer can be tested offline, with no live
+  # MUD and no credentials. Never used in a real run.
+  #
+  # The prompt is written in the real server's exact shape
+  # ("100H 100M 100V (news) (motd) > ", cf. tbaMUD's "22H 100M 83V ...").
+  # It used to be "<100hp 100m 100v> ", which was close enough to look
+  # right and wrong enough to matter: Session::PROMPT_SENTINEL matches the
+  # vitals, so a divergent fake prompt sends every dispatcher call in the
+  # suite down the timeout-and-drain fallback — tests pass, slowly, while
+  # exercising the error path instead of the real one. A fake that lies
+  # about the wire format is worse than no fake; keep this in sync.
   class FakeMud
     attr_reader :port
 
@@ -66,9 +75,9 @@ module MudManager
         sock.write("Welcome, #{name}!\r\n")
         sock.gets # the blank "return" that dismisses the login menu
         sock.gets # "1" to enter the game
-        sock.write("Entering the game...\r\n<100hp 100m 100v> ")
+        sock.write("Entering the game...\r\n100H 100M 100V (news) (motd) > ")
       else
-        sock.write("Reconnecting. Welcome back, #{name}.\r\n<100hp 100m 100v> ")
+        sock.write("Reconnecting. Welcome back, #{name}.\r\n100H 100M 100V (news) (motd) > ")
       end
 
       loop do
@@ -76,7 +85,7 @@ module MudManager
         break if line.nil?
         cmd = line.strip
         break if cmd.casecmp("quit").zero?
-        sock.write("You do: #{cmd}\r\n<100hp 100m 100v> ")
+        sock.write("You do: #{cmd}\r\n100H 100M 100V (news) (motd) > ")
       end
     rescue IOError, Errno::ECONNRESET, Errno::EPIPE
       # client disconnected — fine

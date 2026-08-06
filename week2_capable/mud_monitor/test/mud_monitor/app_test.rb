@@ -152,6 +152,26 @@ module MudMonitor
       refute_includes last_response.body, "helloworld"
     end
 
+    def test_telnet_page_shows_a_stalled_note_when_the_log_has_gone_quiet
+      path = File.join(@telnet_dir, "#{Time.now.strftime("%Y%m%d")}.jsonl")
+      File.write(path, { seq: 0, dir: "out", text: "look", bytes: 4, at: "2026-08-06T01:17:14Z" }.to_json)
+      old = Time.now - 3600
+      File.utime(old, old, path) # older than TelnetLogStore::LIVE_WINDOW_SECONDS -> not live
+
+      get "/telnet"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "No new traffic since"
+    end
+
+    def test_telnet_page_lists_entries_and_redacts_shows_no_stalled_note_when_live
+      write_telnet_record(seq: 0, dir: "out", text: "look", bytes: 4, at: "2026-08-06T01:17:14Z")
+
+      get "/telnet"
+
+      refute_includes last_response.body, "No new traffic since"
+    end
+
     def test_telnet_page_filters_by_direction
       File.write(File.join(@telnet_dir, "#{Time.now.strftime("%Y%m%d")}.jsonl"),
                  [{ seq: 0, dir: "out", text: "look", bytes: 4 }.to_json,
@@ -202,6 +222,118 @@ module MudMonitor
     def test_knowledge_room_detail_404s_for_unknown_id
       get "/knowledge/rooms/999"
       assert_equal 404, last_response.status
+    end
+
+    def test_knowledge_player_page_shows_disabled_message_when_db_absent
+      get "/knowledge/player"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "No"
+    end
+
+    def test_knowledge_player_page_shows_score_inventory_and_equipment
+      db_path = File.join(Dir.mktmpdir, "knowledge.sqlite3")
+      require "sqlite3"
+      db = SQLite3::Database.new(db_path)
+      db.execute_batch(<<~SQL)
+        CREATE TABLE rooms (id INTEGER PRIMARY KEY, name TEXT, last_seen_at TEXT);
+        CREATE TABLE player_state (id INTEGER PRIMARY KEY, current_room_id INTEGER, hp INTEGER, max_hp INTEGER,
+          age INTEGER, armor_class TEXT, updated_at TEXT);
+        CREATE TABLE player_inventory (id INTEGER PRIMARY KEY, descr TEXT, keyword TEXT, quantity INTEGER,
+          first_seen_at TEXT, last_seen_at TEXT);
+        CREATE TABLE player_equipment (id INTEGER PRIMARY KEY, slot TEXT, descr TEXT, keyword TEXT,
+          first_seen_at TEXT, last_seen_at TEXT);
+        INSERT INTO rooms VALUES (1, 'Market Square', '2026-01-01');
+        INSERT INTO player_state VALUES (1, 1, 20, 20, 18, '39/10', '2026-01-02');
+        INSERT INTO player_inventory VALUES (1, 'a torch', 'torch', 1, '2026-01-01', '2026-01-02');
+        INSERT INTO player_equipment VALUES (1, 'wielded', 'a small sword', 'sword', '2026-01-01', '2026-01-02');
+      SQL
+      db.close
+      MudMonitor::App.set :knowledge_db, db_path
+
+      get "/knowledge/player"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "Market Square"
+      assert_includes last_response.body, "a torch"
+      assert_includes last_response.body, "a small sword"
+      assert_includes last_response.body, "39/10"
+    end
+
+    def test_knowledge_map_page_shows_disabled_message_when_db_absent
+      get "/knowledge/map"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "No"
+    end
+
+    def test_knowledge_map_page_positions_rooms_and_highlights_the_current_one
+      db_path = File.join(Dir.mktmpdir, "knowledge.sqlite3")
+      require "sqlite3"
+      db = SQLite3::Database.new(db_path)
+      db.execute_batch(<<~SQL)
+        CREATE TABLE rooms (id INTEGER PRIMARY KEY, name TEXT, first_seen_at TEXT, last_seen_at TEXT);
+        CREATE TABLE room_exits (room_id INTEGER, direction TEXT, target_room_id INTEGER);
+        CREATE TABLE player_state (id INTEGER PRIMARY KEY, current_room_id INTEGER);
+        INSERT INTO rooms VALUES (1, 'Market Square', '2026-01-01', '2026-01-01');
+        INSERT INTO rooms VALUES (2, 'Temple Square', '2026-01-02', '2026-01-02');
+        INSERT INTO room_exits VALUES (1, 'north', 2);
+        INSERT INTO player_state VALUES (1, 1);
+      SQL
+      db.close
+      MudMonitor::App.set :knowledge_db, db_path
+
+      get "/knowledge/map"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "Market Square"
+      assert_includes last_response.body, "Temple Square"
+      assert_includes last_response.body, "current"
+      assert_includes last_response.body, "connected-north"
+      # Legend/summary panel (player_map_plan.md redesign follow-up).
+      assert_includes last_response.body, "2 rooms"
+      assert_includes last_response.body, "1 connection"
+      assert_includes last_response.body, "connected exit"
+    end
+
+    def test_knowledge_map_page_lists_disconnected_rooms_as_a_table
+      db_path = File.join(Dir.mktmpdir, "knowledge.sqlite3")
+      require "sqlite3"
+      db = SQLite3::Database.new(db_path)
+      db.execute_batch(<<~SQL)
+        CREATE TABLE rooms (id INTEGER PRIMARY KEY, name TEXT, first_seen_at TEXT, last_seen_at TEXT,
+          visit_count INTEGER, surveyed_at TEXT);
+        CREATE TABLE room_exits (room_id INTEGER, direction TEXT, target_room_id INTEGER);
+        CREATE TABLE player_state (id INTEGER PRIMARY KEY, current_room_id INTEGER);
+        INSERT INTO rooms VALUES (1, 'Market Square', '2026-01-01', '2026-01-01', 1, '2026-01-01');
+        INSERT INTO rooms VALUES (2, 'Hidden Grove', '2026-01-02', '2026-01-02', 1, NULL);
+      SQL
+      db.close
+      MudMonitor::App.set :knowledge_db, db_path
+
+      get "/knowledge/map"
+
+      assert_includes last_response.body, "Disconnected"
+      assert_includes last_response.body, %(class="log-table")
+      assert_includes last_response.body, "Hidden Grove"
+    end
+
+    # --- Knowledge/Player/Map share a tab strip, not an inline text link ---
+
+    def test_knowledge_family_pages_share_an_active_tab_strip
+      %w[/knowledge /knowledge/player /knowledge/map].each do |path|
+        get path
+        assert_includes last_response.body, %(class="subnav")
+      end
+
+      get "/knowledge"
+      assert_includes last_response.body, %(<a href="/knowledge" class="active">Overview</a>)
+
+      get "/knowledge/player"
+      assert_includes last_response.body, %(<a href="/knowledge/player" class="active">Player</a>)
+
+      get "/knowledge/map"
+      assert_includes last_response.body, %(<a href="/knowledge/map" class="active">Map</a>)
     end
 
     # --- progression page (Phase E) ---

@@ -16,10 +16,10 @@ module Boukensha
       # gem's docs/... report for the one identity simplification made
       # (weak-fingerprint-only lookup, no arrival-edge disambiguation).
       module Schema
-        VERSION = 1
+        VERSION = 2
 
         STEPS = {
-          1 => <<~SQL
+          1 => <<~SQL,
             -- Permanent world data, one row per room the agent has stood in.
             -- weak_fingerprint is NOT UNIQUE, deliberately: two different
             -- rooms could in principle share one, and identity is always
@@ -95,6 +95,56 @@ module Boukensha
               position        TEXT,
               session_id      TEXT,
               updated_at      TEXT NOT NULL
+            );
+          SQL
+
+          # Player Tracking + Visual Map (docs/plans/player_map_plan.md
+          # Part 1 §2) — score-sheet extras on the existing single-row
+          # player_state, plus two new one-row-per-item tables. All
+          # additive/nullable, applied on top of v1 via the same
+          # PRAGMA user_version mechanism — no backfill needed, existing
+          # rows just get NULLs in the new columns until the next `score`.
+          2 => <<~SQL
+            ALTER TABLE player_state ADD COLUMN age INTEGER;
+            -- v1 has max_hp but not max_mana/max_move — scrape_vitals (the
+            -- "22H 100M 83V" line) only ever carried current values, so
+            -- there was nothing to put in them. `score` gives real max
+            -- mana/move ("100(100) mana"), so they're added here too
+            -- rather than leaving the same asymmetry a plan-stage read of
+            -- v1 wouldn't have caught.
+            ALTER TABLE player_state ADD COLUMN max_mana INTEGER;
+            ALTER TABLE player_state ADD COLUMN max_move INTEGER;
+            -- Stored as the server prints it ("39/10") rather than split
+            -- into two integer columns — CircleMUD's two AC numbers (base/
+            -- effective) aren't independently useful to this project, and
+            -- keeping the raw pair avoids guessing which one is "the" AC.
+            ALTER TABLE player_state ADD COLUMN armor_class TEXT;
+            ALTER TABLE player_state ADD COLUMN alignment INTEGER;
+            ALTER TABLE player_state ADD COLUMN exp_to_next_level INTEGER;
+            ALTER TABLE player_state ADD COLUMN quest_points INTEGER;
+
+            -- One row per carried item. Not UNIQUE on descr — the player
+            -- can carry more than one of the same thing, tracked via
+            -- `quantity` (from "a torch (2)"-style count lines) rather than
+            -- duplicate rows.
+            CREATE TABLE player_inventory (
+              id            INTEGER PRIMARY KEY,
+              descr         TEXT NOT NULL,
+              keyword       TEXT,
+              quantity      INTEGER NOT NULL DEFAULT 1,
+              first_seen_at TEXT NOT NULL,
+              last_seen_at  TEXT NOT NULL
+            );
+
+            -- One row per worn/wielded slot. UNIQUE on slot — equipment is
+            -- naturally one-item-per-slot, unlike inventory (see plan §2).
+            CREATE TABLE player_equipment (
+              id            INTEGER PRIMARY KEY,
+              slot          TEXT NOT NULL UNIQUE,
+              descr         TEXT NOT NULL,
+              keyword       TEXT,
+              first_seen_at TEXT NOT NULL,
+              last_seen_at  TEXT NOT NULL
             );
           SQL
         }.freeze
