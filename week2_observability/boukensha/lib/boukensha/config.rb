@@ -101,6 +101,56 @@ module Boukensha
       v.nil? ? 0.85 : Float(v)
     end
 
+    # ---------- observability / OpenTelemetry ------------------------------
+    # Off by default. A real process ENV var always wins over settings.yaml,
+    # so deployments can override without editing (or committing secrets
+    # into) the file:
+    #
+    #   observability:
+    #     otel:
+    #       enabled: true
+    #       capture_content: false
+    #       env:
+    #         OTEL_SERVICE_NAME: boukensha
+    #         OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
+
+    OTEL_ENV_NAME = /\AOTEL_[A-Z0-9_]+\z/.freeze
+
+    def otel_enabled?
+      env_boolean("BOUKENSHA_OTEL_ENABLED", dig(:observability, :otel, :enabled), false)
+    end
+
+    def otel_capture_content?
+      env_boolean("BOUKENSHA_OTEL_CAPTURE_CONTENT", dig(:observability, :otel, :capture_content), false)
+    end
+
+    def otel_content_max_bytes
+      raw   = ENV.fetch("BOUKENSHA_OTEL_CONTENT_MAX_BYTES", dig(:observability, :otel, :content_max_bytes) || 4096)
+      value = Integer(raw)
+      raise ArgumentError, "BOUKENSHA_OTEL_CONTENT_MAX_BYTES must be positive" unless value.positive?
+
+      value
+    end
+
+    # Copies observability.otel.env's OTEL_* keys into the real process ENV
+    # before the SDK configures (OpenTelemetry::SDK reads ENV directly at
+    # configure-time). An existing ENV entry is never overwritten, so a real
+    # deployment override always beats whatever settings.yaml says.
+    def apply_otel_environment!
+      configured = dig(:observability, :otel, :env) || {}
+      raise ArgumentError, "observability.otel.env must be a YAML mapping" unless configured.is_a?(Hash)
+
+      configured.each do |name, value|
+        key = name.to_s
+        unless OTEL_ENV_NAME.match?(key)
+          raise ArgumentError, "observability.otel.env key #{key.inspect} must start with OTEL_ and use uppercase letters"
+        end
+        raise ArgumentError, "observability.otel.env value for #{key} must be a scalar" if value.is_a?(Hash) || value.is_a?(Array)
+
+        ENV[key] = value.to_s unless value.nil? || ENV.key?(key)
+      end
+    end
+
     # ---------- low-level helpers -----------------------------------------
 
     # Fetch a nested key path from settings, e.g. dig(:provider, :model)
@@ -120,6 +170,25 @@ module Boukensha
     def inspect = to_s
 
     private
+
+    # A real process ENV var (any of the accepted truthy/falsy spellings)
+    # always wins over the YAML value; the YAML value wins over default.
+    def env_boolean(env_name, yaml_value, default)
+      raw = ENV[env_name]
+      return truthy?(raw) unless raw.nil?
+      return default if yaml_value.nil?
+
+      truthy?(yaml_value)
+    end
+
+    def truthy?(value)
+      case value
+      when true, false then value
+      when String      then %w[1 true yes on].include?(value.downcase)
+      when Integer     then value != 0
+      else !!value
+      end
+    end
 
     def resolve_dir
       raw = ENV.fetch("BOUKENSHA_DIR", nil) || DEFAULT_DIR

@@ -28,44 +28,48 @@ module Boukensha
     end
 
     def run
-      @context.reset_turn_tokens
-      compact_if_needed
-      @hooks.before_turn(context: @context)
+      @logger.in_span("boukensha.turn", attributes: { "boukensha.session_id" => @logger.session_id }) do
+        @context.reset_turn_tokens
+        compact_if_needed
+        @hooks.before_turn(context: @context)
 
-      loop do
-        # Two independent ceilings; stop at whichever trips first. Limits are
-        # *trigger thresholds*, not hard caps: when one is reached we stop
-        # starting new work iterations and make exactly one terminal wind-down
-        # call (counted in tokens, but not as another iteration).
-        if iteration_limit_reached?
-          @logger.limit_reached(kind: "max_iterations", n: @iteration, max: @max_iterations)
-          return wrap_up("max_iterations")
-        end
-        if token_limit_reached?
-          @logger.limit_reached(kind: "max_tokens", n: @context.turn_tokens, max: @max_turn_tokens)
-          return wrap_up("max_tokens")
-        end
+        loop do
+          # Two independent ceilings; stop at whichever trips first. Limits are
+          # *trigger thresholds*, not hard caps: when one is reached we stop
+          # starting new work iterations and make exactly one terminal wind-down
+          # call (counted in tokens, but not as another iteration).
+          if iteration_limit_reached?
+            @logger.limit_reached(kind: "max_iterations", n: @iteration, max: @max_iterations)
+            break wrap_up("max_iterations")
+          end
+          if token_limit_reached?
+            @logger.limit_reached(kind: "max_tokens", n: @context.turn_tokens, max: @max_turn_tokens)
+            break wrap_up("max_tokens")
+          end
 
-        @iteration += 1
-        @hooks.before_model(context: @context)
-        @logger.iteration(n: @iteration, max: @max_iterations)
-        @logger.prompt(messages: @context.messages, tools: @context.tools, context_window: @context.context_window)
+          @iteration += 1
+          @hooks.before_model(context: @context)
+          @logger.iteration(n: @iteration, max: @max_iterations)
+          @logger.prompt(messages: @context.messages, tools: @context.tools, context_window: @context.context_window)
 
-        response = @client.call(**call_opts)
-        @logger.raw(data: response)
-        parsed   = @builder.parse_response(response)
-        record_usage(response)
-        log_reasoning(parsed[:content])
+          response = @logger.in_span("boukensha.model_call", attributes: { "boukensha.iteration" => @iteration }) do
+            @client.call(**call_opts)
+          end
+          @logger.raw(data: response)
+          parsed   = @builder.parse_response(response)
+          record_usage(response)
+          log_reasoning(parsed[:content])
 
-        if parsed[:stop_reason] == "tool_use"
-          handle_tool_calls(parsed[:content], response)
-        else
-          text = extract_text(parsed[:content])
-          @logger.response(text: text, usage: response["usage"], stop_reason: parsed[:stop_reason], task: nil, backend: @builder.backend)
-          @logger.turn_end(reason: "completed", iterations: @iteration, tokens: @context.turn_tokens)
-          @context.add_message(:assistant, text)
-          @hooks.after_turn(context: @context, text: text)
-          return text
+          if parsed[:stop_reason] == "tool_use"
+            handle_tool_calls(parsed[:content], response)
+          else
+            text = extract_text(parsed[:content])
+            @logger.response(text: text, usage: response["usage"], stop_reason: parsed[:stop_reason], task: nil, backend: @builder.backend)
+            @logger.turn_end(reason: "completed", iterations: @iteration, tokens: @context.turn_tokens)
+            @context.add_message(:assistant, text)
+            @hooks.after_turn(context: @context, text: text)
+            break text
+          end
         end
       end
     end
@@ -110,7 +114,9 @@ module Boukensha
     # Falls back to a deterministic message if the call fails.
     def wrap_up(reason)
       @context.add_message(:user, WRAP_UP_DIRECTIVE)
-      response    = @client.call(tools: [], max_output_tokens: WRAP_UP_OUTPUT_TOKENS)
+      response = @logger.in_span("boukensha.model_call", attributes: { "boukensha.wrap_up" => true }) do
+        @client.call(tools: [], max_output_tokens: WRAP_UP_OUTPUT_TOKENS)
+      end
       parsed_wrap = @builder.parse_response(response)
       text        = extract_text(parsed_wrap[:content])
       text        = fallback_message(reason) if text.strip.empty?
@@ -176,7 +182,9 @@ module Boukensha
 
         @logger.tool_call(name: name, args: args)
         begin
-          result = @registry.dispatch(name, args)
+          result = @logger.in_span("boukensha.tool_call", attributes: { "boukensha.tool.name" => name }) do
+            @registry.dispatch(name, args)
+          end
           @logger.tool_result(name: name, result: result, ok: true)
         rescue StandardError => e
           result = "ERROR: #{e.class}: #{e.message}"

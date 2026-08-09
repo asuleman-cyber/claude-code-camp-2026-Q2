@@ -30,6 +30,13 @@ module MudMonitor
     set :journal_dir, ENV["MUD_JOURNAL_DIR"] || File.expand_path("../../../../.boukensha/journal", __dir__)
     set :error_log_path, ENV["BOUKENSHA_ERROR_LOG"] || File.expand_path("../../../../.boukensha/error.log", __dir__)
     set :telnet_dir,  ENV["MUD_MONITOR_TELNET_DIR"]  || File.expand_path("../../../../.boukensha/telnet", __dir__)
+    # Jaeger's URL scheme (/trace/<id>) is stable and needs no query-string
+    # construction, unlike a Grafana Explore deep link (which needs a
+    # datasource UID + JSON-encoded left= param) — so this links to Jaeger
+    # specifically. Works regardless of which docker-compose profile is
+    # actually running; if it's not jaeger/compare, the link 404s, but the
+    # trace_id/span_id are still shown as plain text either way.
+    set :jaeger_base_url, ENV["MUD_MONITOR_JAEGER_URL"] || "http://localhost:16686"
 
     PER_PAGE = 25
 
@@ -216,6 +223,16 @@ module MudMonitor
         return "" unless live
 
         %(<span class="live-badge">&#9679; live</span>)
+      end
+
+      # otel.md Phase 3: a session entry logged while a telemetry span was
+      # open carries trace_id/span_id (Boukensha::Logger#write_log). "" for
+      # any entry logged before OTel was turned on, or outside a turn.
+      def trace_link(trace_id)
+        return "" if trace_id.to_s.empty?
+
+        url = "#{settings.jaeger_base_url}/trace/#{Rack::Utils.escape_path(trace_id)}"
+        %(<a class="trace-link" href="#{h(url)}" target="_blank" rel="noopener">trace #{h(trace_id[0, 8])}&hellip;</a>)
       end
 
       # /knowledge, /knowledge/player, and /knowledge/map share one URL

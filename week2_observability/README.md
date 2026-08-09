@@ -54,10 +54,6 @@ past) the reference implementation is
 
 ## Phase A — navigation debuggable (done)
 
-Source of truth: `docs/plans/week2_catchup_plan.md` Phase A, and the
-reference plan docs it links to under
-`claude-code-camp-2026-Q2-main/docs/plans/week_2/`.
-
 - **`bin/reset`** — standalone Ruby script, uses `MudManager::Session`
   directly (no MCP daemon, no agent). Logs in as the player (so a live
   target exists), then as admin, runs `goto <room>` + `trans <player>`, and
@@ -127,10 +123,7 @@ assertions, all passing (`rake test` in each gem's directory).
 
 ## Phase B — get visibility before optimizing further (done)
 
-Source of truth: `docs/plans/week2_catchup_plan.md` Phase B, and
-`claude-code-camp-2026-Q2-main/docs/plans/week_2/mud_monitor.md`.
-
-**Stack decision:** the reference doc specifies Rails 8 API + React/TS.
+**Stack decision:** the assignment spec calls for Rails 8 API + React/TS.
 Neither Rails nor the `sqlite3` gem are installed here, and both are
 untested on this Windows box. Standing up that toolchain from scratch for a
 log viewer was a disproportionate lift, so this build extends
@@ -177,12 +170,9 @@ gone even though the underlying task-stack behaviour is unchanged).
 
 ## Phase C — fix the actual navigation problem (done)
 
-Source of truth: `docs/plans/week2_catchup_plan.md` Phase C, and
-`claude-code-camp-2026-Q2-main/docs/plans/week_2/scripted_room_survey.md`.
-
-Went straight to the deterministic script the source plan converges on —
-never built the LLM-driven `room_inspector` ReAct loop it replaces (Phase A
-already decided to skip that detour).
+Went straight to the deterministic room-survey script rather than the
+LLM-driven `room_inspector` ReAct loop it replaces (Phase A already decided
+to skip that detour).
 
 - **`boukensha/lib/boukensha/tools/room_parser.rb`** — pure text → Hash, no
   I/O. Splits the `inspect` MCP tool's output (Phase A) into name,
@@ -232,3 +222,35 @@ native-tool wiring (`Registry#tool` → `RunDSL#dispatch` → the real MCP
 daemon) — moved into the pit fiend's room and got back `mobs: The pit fiend
 is sitting here. (You ARE mad!; The pit fiend is in excellent condition.)`
 with zero LLM calls.
+
+## OpenTelemetry tracing (Phases 1–3 done)
+
+Tutorial: [`docs/otel.md`](../docs/otel.md). Plan:
+[`docs/plans/otel_integration_plan.md`](../docs/plans/otel_integration_plan.md).
+
+- **`observability/`** — docker-compose stack (OTel Collector, Jaeger,
+  Tempo, Grafana), four profiles (`debug`/`jaeger`/`tempo`/`compare`), all
+  ports bound to `127.0.0.1`. See `observability/README.md`.
+- **`boukensha/lib/boukensha/telemetry{.rb,/noop.rb,/open_telemetry.rb}`** —
+  one OTel span per top-level turn (`Agent#run`, wrapped via
+  `Logger#in_span`), every JSONL event becomes a span event on that span
+  (`Logger#write_log` → `Telemetry#capture_event`), content-bearing events
+  gated by `capture_content` and redacted first. Off by default;
+  `config.rb`'s `observability.otel.*` + `BOUKENSHA_OTEL_*` env overrides
+  turn it on. `Telemetry.build` degrades to a `Noop` on any load/config
+  failure rather than crashing a run — verified with
+  `test/test_telemetry.rb`, `test/test_agent_telemetry.rb` (150 total
+  `boukensha` tests passing).
+- **`mud_monitor/lib/mud_monitor/session.rb`, `app.rb`, `views/session.erb`**
+  — every JSONL line written while a span is open carries `trace_id`/
+  `span_id` (`Telemetry#current_ids`); the session view renders a link to
+  Jaeger for any entry that has one (`trace_link` helper,
+  `MUD_MONITOR_JAEGER_URL` to override the default `localhost:16686`).
+  Verified against a real trace, not just fixtures — see the plan doc's
+  status note.
+
+**Adapted from course reference material** (`claude-code-camp-2026-Q2-main`,
+approved for direct reuse) but restructured for this codebase's actual
+shape — this project's `Logger`/`Agent` have no frame/span-stack
+architecture, so the instrumentation here is flat (one span per turn) where
+the reference nests spans per tool call.

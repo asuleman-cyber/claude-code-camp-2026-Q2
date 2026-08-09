@@ -6,8 +6,7 @@
 # daemon, no agent, just two telnet logins. Run this before starting the
 # agent so every navigation experiment starts from the same known position.
 #
-# See docs/plans/week2_catchup_plan.md Phase A and the source-of-truth plan
-# this follows: claude-code-camp-2026-Q2-main/docs/plans/week_2/reset_script.md
+# See docs/plans/week2_catchup_plan.md Phase A for the design rationale.
 #
 # Usage:
 #   ruby week2_observability/bin/reset

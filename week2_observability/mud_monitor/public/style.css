@@ -764,6 +764,17 @@ table.sessions th a:hover {
   color: var(--muted);
 }
 
+.trace-link {
+  color: var(--accent, #4a7dd6);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+
+.trace-link:hover {
+  text-decoration: none;
+  border-bottom-style: solid;
+}
+
 .dt-pill.dt-coarse {
   font-style: italic;
 }

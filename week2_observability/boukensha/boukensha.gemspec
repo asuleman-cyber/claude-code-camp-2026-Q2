@@ -33,5 +33,15 @@ Gem::Specification.new do |spec|
   # is exactly the "optional at runtime" behavior this needs.
   spec.add_development_dependency "charm"
 
+  # Same reasoning as charm above: OpenTelemetry is optional at runtime.
+  # Boukensha::Telemetry.build rescues LoadError when these aren't installed
+  # and falls back to a Noop tracer, so a bare `gem install boukensha` user
+  # who never turns observability.otel.enabled on shouldn't need these gems
+  # — and declaring them add_dependency would (per the charm comment above)
+  # block bin activation entirely for anyone who doesn't have them.
+  spec.add_development_dependency "opentelemetry-api"
+  spec.add_development_dependency "opentelemetry-sdk"
+  spec.add_development_dependency "opentelemetry-exporter-otlp"
+
   # open3, net/http, and json are stdlib. Users supply their own ANTHROPIC_API_KEY.
 end

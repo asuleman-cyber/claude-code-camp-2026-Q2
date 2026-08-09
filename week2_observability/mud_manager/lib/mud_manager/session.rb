@@ -194,8 +194,21 @@ module MudManager
       # Enter Username
       self.send_command(username)
 
-      # Expect Password Prompt
-      self.read_until(/Password/i)
+      # Some servers (this project's live tbaMUD included) ask for
+      # confirmation before the password prompt — typically when the
+      # entered name's capitalization doesn't exactly match what's on
+      # record: "Did I get that right, Dummy (Y/N)? ". Unhandled, this
+      # stalls every login for the full read timeout (~10s), and since
+      # Mcp::SessionPool only caches a *successful* login, the next tool
+      # call just repeats the identical failed dance from scratch —
+      # forever, one ~10s stall per tool call, never actually reaching the
+      # password prompt. Found via a live trace: three ~11.5s tool_call
+      # spans in a row was the tell (see docs/otel.md).
+      confirm_or_password = self.read_until(/Did I get that right.*\(Y\/N\)\?|Password/i)
+      if confirm_or_password =~ /Did I get that right/i
+        self.send_command("Y")
+        self.read_until(/Password/i)
+      end
 
       # Enter Password — redacted in the telnet log; it must never land on
       # disk even in a development-only log.

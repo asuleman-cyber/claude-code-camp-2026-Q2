@@ -42,3 +42,16 @@ mcp_servers:
       # by week2_observability/mud_monitor.
       MUD_MANAGER_LOG_DIR: .boukensha/manager
       MUD_TELNET_LOG_DIR:  .boukensha/telnet
+
+# Off by default; docs/otel.md is the full tutorial. Requires the jaeger (or
+# tempo/compare) docker profile running — see week2_observability/observability/.
+# Flip enabled back to false (or delete this block) to turn tracing off again.
+observability:
+  otel:
+    enabled: true
+    capture_content: false
+    env:
+      OTEL_SERVICE_NAME: boukensha
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_TRACES_EXPORTER: otlp

@@ -2,6 +2,7 @@ require "json"
 require "fileutils"
 require "securerandom"
 require "time"
+require_relative "telemetry"
 
 module Boukensha
   class Logger
@@ -9,13 +10,22 @@ module Boukensha
 
     attr_reader :session_id, :path
 
-    def initialize(session_id: nil, dir: nil, log: nil, snapshot: {})
+    def initialize(session_id: nil, dir: nil, log: nil, snapshot: {}, telemetry: Telemetry::Noop.new)
       @session_id = session_id || generate_session_id
       @path       = log || File.join(dir || default_dir, "#{@session_id}.jsonl")
+      @telemetry  = telemetry
 
       FileUtils.mkdir_p(File.dirname(@path))
       @log_io = File.open(@path, "a")
       write_log({ phase: "session_start" }.merge(snapshot))
+    end
+
+    # Opens one telemetry span for the duration of the block — Agent#run
+    # wraps its whole turn in this, so every event logged during that turn
+    # (via write_log below) lands as an event on the same span. A Noop
+    # telemetry object just yields, so this costs nothing when OTel is off.
+    def in_span(name, attributes: {}, &block)
+      @telemetry.in_span(name, attributes: attributes, &block)
     end
 
     def turn(n:)
@@ -88,6 +98,7 @@ module Boukensha
     end
 
     def close
+      @telemetry.force_flush(timeout: 5)
       @log_io&.close
     end
 
@@ -105,12 +116,17 @@ module Boukensha
       # prefers mono_ms and falls back to `at`. Sessions logged before this
       # change have neither — mud_monitor renders those as coarse (~1s)
       # rather than a falsely precise 0ms.
+      # trace_id/span_id (empty unless a telemetry span is currently open —
+      # see Telemetry::Noop#current_ids / OpenTelemetry#current_ids) ride
+      # along on the same line so mud_monitor can link a transcript entry
+      # straight to its trace without a second correlation mechanism.
       @log_io.puts JSON.generate(event.merge(
         session_id: @session_id,
         at:         Time.now.iso8601(3),
         mono_ms:    (Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).round
-      ))
+      ).merge(@telemetry.current_ids))
       @log_io.flush
+      @telemetry.capture_event(event)
       @subscribers&.each { |s| s.call(event) }
     end
 

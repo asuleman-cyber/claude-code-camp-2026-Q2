@@ -14,7 +14,7 @@ module MudMonitor
                        :running_turn_tokens, :redacted,
                        :task, :provider, :model, :input_tokens, :output_tokens,
                        :cost_usd, :usage_unit, :usage_level,
-                       :at, :dt_ms,
+                       :at, :dt_ms, :trace_id, :span_id,
                        keyword_init: true)
 
     # One sample per `response`, in order. Drives the in-transcript chips and
@@ -94,8 +94,14 @@ module MudMonitor
           next
         end
 
-        at    = event["at"]
-        dt_ms = timing_delta(event)
+        at       = event["at"]
+        dt_ms    = timing_delta(event)
+        # Present only while a Boukensha::Telemetry span was open when this
+        # line was written (see Logger#write_log) — nil for every session
+        # logged before OTel tracing existed, and for any line written
+        # outside a turn (e.g. session_start).
+        trace_id = event["trace_id"]
+        span_id  = event["span_id"]
 
         case event["phase"]
         when "session_start"
@@ -114,7 +120,7 @@ module MudMonitor
           if message && message["role"] == "user"
             @entries << Entry.new(type: :user, text: extract_text(message["content"]),
                                    turn: current_turn, iteration: current_iteration,
-                                   at: at, dt_ms: dt_ms)
+                                   at: at, dt_ms: dt_ms, trace_id: trace_id, span_id: span_id)
           end
           pending_user = false
         when "compaction"
@@ -123,20 +129,20 @@ module MudMonitor
           @entries << Entry.new(type: :compaction, before: event["before"],
                                  dropped: event["dropped"],
                                  turn: current_turn, iteration: current_iteration,
-                                 at: at, dt_ms: dt_ms)
+                                 at: at, dt_ms: dt_ms, trace_id: trace_id, span_id: span_id)
         when "reasoning"
           next if light
 
           @entries << Entry.new(type: :reasoning, text: event["text"],
                                  redacted: event["redacted"],
                                  turn: current_turn, iteration: current_iteration,
-                                 at: at, dt_ms: dt_ms)
+                                 at: at, dt_ms: dt_ms, trace_id: trace_id, span_id: span_id)
         when "plan"
           next if light
 
           @entries << Entry.new(type: :plan, text: event["text"],
                                  turn: current_turn, iteration: current_iteration,
-                                 at: at, dt_ms: dt_ms)
+                                 at: at, dt_ms: dt_ms, trace_id: trace_id, span_id: span_id)
         when "response"
           usage = event["usage"]
           if usage
@@ -169,7 +175,7 @@ module MudMonitor
                                    usage_unit: event["usage_unit"],
                                    usage_level: event["usage_level"],
                                    turn: current_turn, iteration: current_iteration,
-                                   at: at, dt_ms: dt_ms)
+                                   at: at, dt_ms: dt_ms, trace_id: trace_id, span_id: span_id)
           end
         when "tool_call"
           next if light
@@ -183,12 +189,12 @@ module MudMonitor
                                  tool_result: event["result"], tool_ok: event.fetch("ok", true),
                                  tool_error: event["error"],
                                  turn: current_turn, iteration: current_iteration,
-                                 at: at, dt_ms: dt_ms)
+                                 at: at, dt_ms: dt_ms, trace_id: trace_id, span_id: span_id)
         when "turn_end"
           @entries << Entry.new(type: :turn_end, reason: event["reason"],
                                  iterations: event["iterations"], tokens: event["tokens"],
                                  turn: current_turn, iteration: current_iteration,
-                                 at: at, dt_ms: dt_ms)
+                                 at: at, dt_ms: dt_ms, trace_id: trace_id, span_id: span_id)
         end
 
         @last_turn      = current_turn      if current_turn.to_i > @last_turn

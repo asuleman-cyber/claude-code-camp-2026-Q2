@@ -19,13 +19,18 @@ module MudManager
   class FakeMud
     attr_reader :port
 
-    def initialize(password: "secret", host: "127.0.0.1")
-      @password = password
-      @server   = TCPServer.new(host, 0)
-      @port     = @server.addr[1]
-      @known    = {}
-      @known_mu = Mutex.new
-      @closed   = false
+    # confirm_name: true simulates the "Did I get that right, Name (Y/N)? "
+    # step some real servers (this project's live tbaMUD included) insert
+    # before the password prompt — off by default so it opts in per-test
+    # rather than changing the shape every other test already relies on.
+    def initialize(password: "secret", host: "127.0.0.1", confirm_name: false)
+      @password     = password
+      @confirm_name = confirm_name
+      @server       = TCPServer.new(host, 0)
+      @port         = @server.addr[1]
+      @known        = {}
+      @known_mu     = Mutex.new
+      @closed       = false
       @accept_thread = Thread.new { accept_loop }
       @accept_thread.report_on_exception = false
     end
@@ -56,6 +61,12 @@ module MudManager
       sock.write("By what name do you wish to be known? ")
       name = sock.gets&.strip
       return sock.close if name.nil?
+
+      if @confirm_name
+        sock.write("Did I get that right, #{name.capitalize} (Y/N)? ")
+        confirm = sock.gets&.strip
+        return sock.close unless confirm&.casecmp?("y")
+      end
 
       sock.write("Password: ")
       password = sock.gets&.strip

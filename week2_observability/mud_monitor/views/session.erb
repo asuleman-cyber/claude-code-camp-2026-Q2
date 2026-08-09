@@ -109,10 +109,11 @@
     <% end %>
 
     <% clock = fmt_clock(entry.at) %>
-    <% if clock || entry.dt_ms %>
+    <% if clock || entry.dt_ms || entry.trace_id %>
       <div class="entry-timing">
         <% if clock %><span class="entry-clock"><%= clock %></span><% end %>
         <%= fmt_dt(entry.dt_ms, coarse: @session.timing_source == "wallclock_coarse") %>
+        <%= trace_link(entry.trace_id) %>
       </div>
     <% end %>
 

@@ -99,5 +99,37 @@ module MudMonitor
       assert_equal 1, session.parse_errors.length
       assert_equal 2, session.parse_errors.first[:line]
     end
+
+    # otel.md Phase 3: Boukensha::Logger stamps trace_id/span_id onto every
+    # line written while a telemetry span is open (see
+    # Boukensha::Telemetry#current_ids). Session just needs to carry those
+    # two fields through onto the Entry so the view can link to the trace.
+    def test_trace_id_and_span_id_carry_through_when_present
+      session = Session.load(write_jsonl(
+        session_start, turn(0), iteration(1),
+        prompt("do the thing", "trace_id" => "abc123", "span_id" => "def456"),
+        response("trace_id" => "abc123", "span_id" => "ghi789"),
+        turn_end
+      ))
+
+      user_entry      = session.entries.find { |e| e.type == :user }
+      assistant_entry = session.entries.find { |e| e.type == :assistant }
+
+      assert_equal "abc123", user_entry.trace_id
+      assert_equal "def456", user_entry.span_id
+      assert_equal "abc123", assistant_entry.trace_id
+      assert_equal "ghi789", assistant_entry.span_id
+    end
+
+    def test_trace_id_and_span_id_are_nil_when_tracing_was_off
+      session = Session.load(write_jsonl(
+        session_start, turn(0), iteration(1), prompt("do the thing"), response, turn_end
+      ))
+
+      user_entry = session.entries.find { |e| e.type == :user }
+
+      assert_nil user_entry.trace_id
+      assert_nil user_entry.span_id
+    end
   end
 end

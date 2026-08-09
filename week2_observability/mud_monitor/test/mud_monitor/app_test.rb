@@ -88,6 +88,26 @@ module MudMonitor
       assert_equal 404, last_response.status
     end
 
+    def test_session_detail_links_to_the_trace_when_present
+      MudMonitor::App.set :jaeger_base_url, "http://localhost:16686"
+      write_session("2026-07-31-aaa", at: "2026-07-31T00:00:00Z", extra_lines: [
+        { "phase" => "response", "text" => "traced", "usage" => { "input_tokens" => 1, "output_tokens" => 1 },
+          "trace_id" => "abc123def456", "span_id" => "def456" }.to_json
+      ])
+
+      get "/sessions/2026-07-31-aaa"
+
+      assert_includes last_response.body, %(href="http://localhost:16686/trace/abc123def456")
+    end
+
+    def test_session_detail_has_no_trace_link_when_tracing_was_off
+      write_session("2026-07-31-aaa", at: "2026-07-31T00:00:00Z")
+
+      get "/sessions/2026-07-31-aaa"
+
+      refute_includes last_response.body, "trace-link"
+    end
+
     def test_session_detail_rejects_path_traversal
       get "/sessions/..%2F..%2F..%2Fetc%2Fpasswd"
 

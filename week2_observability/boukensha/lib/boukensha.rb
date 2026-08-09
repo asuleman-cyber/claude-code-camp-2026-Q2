@@ -90,7 +90,7 @@ module Boukensha
 
     builder = PromptBuilder.new(ctx, be)
     client  = Client.new(builder)
-    logger  = Logger.new(log: log, snapshot: {
+    logger  = Logger.new(log: log, telemetry: Telemetry.build(config: cfg), snapshot: {
       max_iterations:    cfg.agent_max_iterations,
       max_turn_tokens:   cfg.agent_max_turn_tokens,
       max_output_tokens: (max_output_tokens || cfg.agent_max_output_tokens),
@@ -161,7 +161,7 @@ module Boukensha
 
     builder = PromptBuilder.new(ctx, be)
     client  = Client.new(builder)
-    logger  = Logger.new(log: log, snapshot: {
+    logger  = Logger.new(log: log, telemetry: Telemetry.build(config: cfg), snapshot: {
       max_iterations:    cfg.agent_max_iterations,
       max_turn_tokens:   cfg.agent_max_turn_tokens,
       max_output_tokens: (max_output_tokens || cfg.agent_max_output_tokens),
@@ -247,6 +247,7 @@ require_relative "boukensha/registry"
 require_relative "boukensha/hooks"
 require_relative "boukensha/error_log"
 require_relative "boukensha/prompt_builder"
+require_relative "boukensha/telemetry"
 require_relative "boukensha/logger"
 require_relative "boukensha/backends/base"
 require_relative "boukensha/backends/anthropic"
