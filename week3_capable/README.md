@@ -2,7 +2,7 @@
 
 Making the agent capable of executing complex goals: plan decomposition,
 richer knowledge access, navigation, and memory. The rollup plan is
-[`docs/plans/capability_plan`](../docs/plans/capability_plan); each phase gets
+[`docs/plans/capability/capability_plan`](../docs/plans/capability/capability_plan); each phase gets
 its own write-up under [`docs/plans/capability/`](../docs/plans/capability/).
 
 ## Setup
@@ -240,10 +240,33 @@ memory:
 **Tests:** `boukensha` 263 runs / 746 assertions, `mud_manager` 41 / 217,
 `mud_monitor` 73 / 259 — all green.
 
-## Status
+## Status — after the 2026-08-09 live run
 
-Phases G–J are all built and tested; **none has been verified live against a
-real model yet.** The plumbing is proven offline against real MCP servers,
-real SQLite, and real permissions — the prompts are untested drafts. See each
-phase's "Not yet done" section; the autonomous `Session.play` loop from
-Phase G also remains open.
+Two sessions against the real CircleMUD on `localhost:4000` with
+`claude-haiku-4-5`, through the ordinary `boukensha --no-tui` REPL.
+
+| Phase | Status |
+|---|---|
+| G — orchestrator | **Verified live.** Planner produced real plans; the Judge **disagreed** (`replan`) on its first real opportunity, and every `VERDICT:` line parsed. |
+| H — knowledge query API | **Verified live.** The Judge called `world_knowledge` unprompted — `kind=overview`, then `kind=room`. `kind=route` still unexercised. |
+| I — Navigator | **Not exercised.** `consult_navigator` was available for two sessions and called **zero times**. No live evidence it works or is wanted. |
+| J — cross-session memory | **Verified live.** A digest written at session 1's EOF was read back by session 2's Planner; it merged rather than appended across two rewrites. |
+
+The agent mapped 4 rooms / 5 walked edges / 7 frontiers, with revisits
+(`x2`, `x3`) confirming Phase D's zero-round-trip known-room path still
+fires. Total cost for both sessions: **$0.10** — player $0.078, judge $0.013,
+chronicler $0.007, planner $0.003, so orchestration is ~22% of spend.
+
+**Two findings from the run:**
+
+1. **The Navigator went unused.** Every destination was an adjacent room the
+   state block already named — the tool description steering away from a
+   wasteful call, working as designed, but leaving the phase unvalidated. See
+   its write-up for how to actually test it.
+2. **Planner and Chronicler prompts are never logged.** Both call
+   `Client#call` directly instead of going through `Agent#run`, and only
+   `Agent#run` emits `Logger#prompt`. Their responses are logged and costed
+   correctly; what they were *given* is invisible in the session log.
+   Verifying the Planner received memory took a separate script.
+
+Still open: `Session.play` (the autonomous outer loop) from Phase G.

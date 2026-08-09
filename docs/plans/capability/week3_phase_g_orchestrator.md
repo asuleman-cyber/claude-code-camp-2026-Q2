@@ -1,7 +1,8 @@
 # Week 3 — Phase G: The Orchestrator (Planner + Judge)
 
-**Status: built and tested; not yet verified live against a real model.**
-Companion: [`capability_plan`](../capability_plan). Previous week:
+**Status: built, tested, and verified live** against a real model and the
+real CircleMUD — see [Verified live](#verified-live-2026-08-09) below.
+Companion: [`capability_plan`](capability_plan). Previous week:
 [Phase F — error log](../observability/week2_phase_f_error_log.md).
 
 The agent could play. It could not say what it was trying to do, and nothing
@@ -183,7 +184,7 @@ force, a `:replan` verdict schedules a fresh plan for the next turn, and a
 `:flag` prints the Judge's reasoning. `/clear` drops the plan along with the
 history it was written for.
 
-## Verified so far
+## Verified offline (before the live run)
 
 Offline, with a real MCP server (`FakeMud`) and only the model call stubbed —
 a script driving the real `Config`, `Registry`, `Permissions`, `Context`, and
@@ -210,15 +211,68 @@ The `mud_monitor` view is covered end-to-end through the real ERB
 at the parsing layer — a broken template would otherwise sail past
 `session_test.rb`.
 
+## Verified live (2026-08-09)
+
+Two sessions against the real CircleMUD on `localhost:4000` with
+`claude-haiku-4-5`, character `dummy`, run through the ordinary
+`boukensha --no-tui` REPL with input piped in.
+
+**The Planner produced a real plan**, in the shape its prompt asks for:
+
+```
+**Objective:** Establish current location and adjacent areas to inform future planning.
+**Steps:** 1. Look around... 2. Move through one available exit... 3. Report back...
+**Stop when:** The character has successfully moved to an adjacent room and
+reported its contents, or when blocked by a locked door or hostile creature.
+```
+
+**The Judge disagreed** — the single most important result here. Session 2's
+second turn hit `max_iterations`, the Judge was invoked (as designed: a
+tripped limit is judged regardless of `every: 2`), and it returned:
+
+```
+judge/start    max_iterations
+judge/verdict  replan
+```
+
+A checkpoint that can only ever say `continue` is pure overhead; the
+hypothesis that it would be worth its cost only if it could disagree is the
+one this run was really testing. It disagreed on its first real opportunity.
+The `VERDICT:` line parsed cleanly both times it ran — no spurious `:flag`
+from an unparseable reply, which was the specific prompt risk flagged
+before the run.
+
+**Per-task attribution worked**, straight out of `cost_breakdown`:
+
+| task | cost (2 sessions) |
+|---|---|
+| player | $0.07774 |
+| judge | $0.01265 |
+| chronicler | $0.00672 |
+| planner | $0.00287 |
+| **total** | **$0.09999** |
+
+Orchestration overhead is ~22% of spend. Worth knowing before turning
+`every: 1` on.
+
+### What this run also exposed
+
+**The Planner's and Chronicler's prompts are never logged.** `run_planner`
+and `run_chronicler` call `Client#call` directly rather than going through
+`Agent#run`, and `Logger#prompt` is only emitted inside `Agent#run`. Their
+*responses* are logged correctly (tagged `task: planner` / `chronicler`), so
+cost and output are visible — but what they were *given* is not. Verifying
+that the Planner actually received the memory digest needed a separate
+script; it could not be read off the session log.
+
+That is a real observability gap, and an awkward one for the two roles whose
+whole behaviour is determined by what you feed them. The fix is a
+`@logger.prompt(...)` call in both methods before the `Client#call`; not done
+here because this phase's verification run is not the place to change what it
+is verifying.
+
 ## Not yet done
 
-- **Live verification against a real model and the real CircleMUD.** Every
-  prior phase in this project carries a "verified live" section and this one
-  does not yet: nothing here has made an actual Planner or Judge API call.
-  The plumbing is proven; the prompts are not. Until that run happens, treat
-  the two `prompts/*/system.md` files as untested drafts — particularly
-  whether the Judge reliably emits a parseable `VERDICT:` line, since the
-  fail-closed default means a sloppy prompt shows up as spurious `:flag`s.
 - **`Boukensha::Session.play`** — the fully autonomous outer loop (plan →
   N turns → judge → replan, no human). The plan named it as one option
   alongside "an equivalent wrapper around the existing `Repl`"; the REPL
@@ -235,12 +289,13 @@ at the parsing layer — a broken template would otherwise sail past
 
 ## Try yourself
 
-- **Run it live and read the transcript** at `/sessions/:id` — the three
-  roles are colour-coded down the left edge, and a `flag` renders red. That
-  is the fastest way to find out whether the Judge is being useful or just
-  expensive.
-- **Set `every: 1` and watch the cost breakdown.** Judging every turn doubles
-  the model calls; the per-task rows will show exactly what that buys.
-- **Try a deliberately bad plan** and check the Judge actually says `replan`
-  rather than politely continuing — the failure mode to watch for is a Judge
-  that never disagrees.
+- **Add the missing prompt logging** (above) — two lines, and it makes the
+  Planner and Chronicler as inspectable as every other role.
+- **Read the transcript** at `/sessions/:id` — the roles are colour-coded
+  down the left edge, and a `flag` renders red.
+- **Set `every: 1` and watch the cost breakdown.** Judging every turn roughly
+  doubles the checkpoint spend; the measured baseline above is `every: 2` at
+  ~13% of total for the Judge alone.
+- **Find out whether the Judge ever says `flag`.** It returned `replan` on
+  its first real opportunity, which is the good news; `flag` is the verdict
+  that stops play for a human and it has not been seen in the wild yet.

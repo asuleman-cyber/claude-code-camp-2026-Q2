@@ -1,7 +1,10 @@
 # Week 3 — Phase I: The Navigator Subagent
 
-**Status: built and tested; not yet verified live against a real model.**
-Companion: [`capability_plan`](../capability_plan). Previous:
+**Status: built and tested. Offered to a real model twice and NOT used** —
+it remains the one Week 3 phase with no live evidence that it works, or that
+it is wanted. See [The live run didn't use
+it](#the-live-run-didnt-use-it-2026-08-09).
+Companion: [`capability_plan`](capability_plan). Previous:
 [H — knowledge query API](week3_phase_h_knowledge.md).
 
 Phase H gave every non-Player role a way to query the map. Phase I puts a
@@ -115,7 +118,7 @@ exactly one `tool_call`/`tool_result` pair — the question and the answer —
 and none of the intermediate map reads. There is a test pinning that a
 `consult_navigator` dispatch leaves the caller's message count unchanged.
 
-## Verified so far
+## Verified offline (before the live run)
 
 Offline, against a real MCP server (`FakeMud`), a real on-disk store, and
 real `Permissions` — model call stubbed:
@@ -140,14 +143,62 @@ caller context untouched:      true
 logged navigator events:       ["navigator/start", "navigator/answer"]
 ```
 
+## The live run didn't use it (2026-08-09)
+
+Two sessions against the real CircleMUD, `claude-haiku-4-5`. The Player had
+`consult_navigator` registered and available for every turn. Tool calls
+across both sessions:
+
+```
+tbamud__move        6
+tbamud__inspect     5
+tbamud__look        3
+world_knowledge     2      (the Judge — Phase H)
+tbamud__check       1
+consult_navigator   0      <-- never called
+```
+
+So this phase has **no live evidence at all**: not that it works, and not
+that it is wanted. Everything below is still only unit-tested.
+
+### Why, and whether that's a problem
+
+The honest reading is that nothing in those sessions was the kind of question
+the Navigator exists for. The goals were "look around and move one room",
+"continue toward the Common Square", "head back to Poor Alley" — adjacent
+hops where the state block already listed the exit by name. The Navigator was
+built for vague destinations and missing routes, and none came up.
+
+That is the design working as intended, not the Player ignoring a useful
+tool: a Player that *had* called it for "move one room east" would have been
+paying a whole subagent turn to be told what its own state block already
+said. The tool description steers away from exactly that, and it steered
+correctly.
+
+But it means the justification argued at the top of this document — that
+there are cases BFS can't answer, and this earns its cost there — is still an
+argument, not a finding. Two sessions produced zero of those cases. If a
+longer run keeps producing zero, the conclusion to draw is that the phase is
+solving a problem this agent does not have, and `world_knowledge(kind: route)`
+alone is the right level of capability.
+
+### How to actually test it
+
+A goal that names somewhere the character has never been and cannot reach in
+one step — `"get to the Grubby Inn"` from Wall Road, say. As of the run above
+the Grubby Inn is a recorded frontier (seen from The Eastern End Of Poor
+Alley, never entered), so `route_to` returns nil and the Navigator has to do
+the thing it exists for: read the map and name the unexplored exit to head
+for. That is the one case worth checking before trusting any of this.
+
+The failure mode to watch is unchanged and untested: **fabricating a
+direction the tool never returned**, which costs the character real moves.
+The prompt forbids it in as many words. Nobody has yet seen whether that
+holds.
+
 ## Not yet done
 
-- **Live verification against a real model.** Third phase carrying this gap.
-  The specific risk here is different from G and H: the Navigator's failure
-  mode is *fabricating a direction the tool never gave it*, which costs the
-  character real moves. The prompt forbids it in as many words, but only a
-  live run shows whether that holds. Until then, treat a Navigator answer as
-  unvalidated.
+- **Any live exercise at all** (above) — the gap that matters most here.
 - **No cost ceiling on a caller's turn.** `consult_navigator` runs a whole
   agent loop inside another agent's turn; its tokens land on that turn's
   budget (`max_turn_tokens` is shared) but nothing warns when navigation is
@@ -162,9 +213,12 @@ logged navigator events:       ["navigator/start", "navigator/answer"]
 
 ## Try yourself
 
+- **Give it a goal it cannot reach in one step** (see "How to actually test
+  it" above). Until that happens this phase is unvalidated.
 - **Ask it for somewhere unreachable** and check it returns a *lead* (an
   unexplored exit heading the right way) rather than either "no" or an
   invented route. That behaviour is the whole reason this isn't just the BFS.
-- **Watch for the Player calling it when it already knows the room name** —
-  that is the wasteful path the tool description tries to steer away from,
-  and the transcript's violet entries make it obvious.
+- **If several more sessions still never call it**, take that seriously as a
+  result: delete it and keep `world_knowledge(kind: route)`. A subagent
+  nothing invokes is worse than no subagent, because it still has to be
+  maintained and reasoned about.

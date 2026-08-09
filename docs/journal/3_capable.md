@@ -1,10 +1,9 @@
 # Week 3 Technical Documentation
 
-> **Status:** Phases G–J are built and tested; none has been verified live
-> against a real model. Goal / Uncertainty / Hypothesis below are written
-> from the design work and are final. **Observations and Conclusions are
-> deliberately incomplete** — they need a live run, and filling them in from
-> offline test results would be inventing evidence. Per-phase detail lives in
+> **Status:** Phases G–J built and tested; **G, H and J verified live**
+> against a real model and the real CircleMUD on 2026-08-09. **Phase I (the
+> Navigator) was offered to the model twice and never called**, so it remains
+> unvalidated. Per-phase detail lives in
 > [`docs/plans/capability/`](../plans/capability/).
 
 ## Problems observed in Week 2
@@ -120,46 +119,101 @@ prose. `Tasks::Chronicler` has zero tools specifically so it cannot drift
 into the first job: `world_knowledge` already answers that live and for free,
 and copying it into a digest only makes a staler second copy.
 
-**Pending live verification.** Nothing above required a real model call. The
-things that do, and are therefore still unknown:
+### 7. The live run: the Judge disagreed, and the Navigator was ignored
 
-- whether the Judge reliably emits a parseable `VERDICT:` line (the
-  fail-closed default turns a sloppy prompt into spurious `:flag`s);
-- whether it ever disagrees, or just says `continue`;
-- whether the Navigator fabricates directions the tool never gave it;
-- whether the Chronicler's instruction to *forget* causes it to over-forget,
-  which would silently lose history with no error anywhere.
+Two sessions, real MUD, `claude-haiku-4-5`, character `dummy`.
+
+**The Judge disagreed.** Session 2's second turn hit `max_iterations`, the
+Judge was invoked (a tripped limit is judged regardless of `every: 2`), and
+returned `replan`. Every `VERDICT:` line parsed — no spurious `:flag` from
+the fail-closed default. It also called `world_knowledge` unprompted, twice,
+`kind=overview` then `kind=room`. The checkpoint hypothesis — that it is only
+worth its cost if it can disagree — survived its first real test.
+
+**Memory crossed the process boundary.** A digest written at session 1's EOF
+was read back by session 2's Planner, and the Player's prompt contained the
+resulting plan but not the memory. It merged rather than appended across two
+rewrites: `Strategies` went from `_nothing yet_` to real content, the layout
+gained a room, the open threads were rewritten rather than restated.
+
+**The Navigator was never called.** `consult_navigator` was available to the
+Player for both sessions and invoked zero times. Not a bug: every destination
+was an adjacent room the state block already named, and the tool's own
+description tells callers holding an exact room name to use the cheaper path.
+It steered correctly — and in doing so left the phase with no evidence that
+it works or that this agent wants it.
+
+> A tool nobody calls is not automatically a failure, but it is not a
+> success either. The case for the Navigator was that BFS cannot answer vague
+> destinations; two sessions produced no vague destinations. Until one does,
+> that case is an argument, not a finding.
+
+**Cost:** $0.10 for both sessions — player $0.078, judge $0.013, chronicler
+$0.007, planner $0.003. Orchestration is ~22% of spend at `every: 2`.
+
+### 8. Two roles are invisible in the logs
+
+`run_planner` and `run_chronicler` call `Client#call` directly instead of
+going through `Agent#run`, and `Logger#prompt` is only emitted inside
+`Agent#run`. Their responses are logged and costed correctly; what they were
+*given* is not recorded anywhere. Confirming the Planner had actually
+received the memory digest required a separate script — it could not be read
+off the session log.
+
+> The two roles whose entire behaviour is determined by their input are the
+> two whose input isn't logged. Worth fixing before tuning either prompt.
+
+**Still unknown:** whether the Chronicler over-forgets. Both rewrites here
+grew the digest and dropped nothing important, which is the easy case; the
+interesting one is a rewrite against a digest already at the character cap.
 
 ## Technical Conclusions
 
-_Pending a live run. What can be said now:_
-
-- **The plumbing holds.** Four roles, three restricted tool surfaces, a
-  shared MUD connection, and a memory that survives a process boundary — all
-  verified offline against real MCP servers, real SQLite, and real
-  permissions. 263 boukensha tests, green.
-- **Everything is off by default.** `Orchestrator.build` returns nil unless
-  something is switched on, and a `settings.yaml` written before Week 3 runs
-  byte-for-byte as it did. That was deliberate: four new model roles is a lot
-  of new behaviour to inflict on a config that didn't ask for it.
+- **Three of the four roles earn their place; one has not shown that it
+  does.** Planner, Judge and Chronicler all did something a single agent
+  could not: hold an objective across turns, disagree with progress, and
+  carry knowledge across a process boundary. The Navigator was available for
+  two full sessions and never invoked.
+- **The checkpoint hypothesis held.** A Judge that could only say `continue`
+  would have been pure overhead; it returned `replan` on its first real
+  opportunity, and it reached for `world_knowledge` to ground the judgement
+  rather than assessing from the transcript alone.
+- **Specialisation was mostly about removing options, not adding
+  capability.** The Judge's value came from a read-only surface; the
+  Navigator's from being unable to move; the Chronicler's from having no
+  tools at all. In every case the constraint, not the capability, is what
+  made the role trustworthy — and `Permissions`, built in Week 2 and never
+  switched on, turned out to be the mechanism the whole week rested on.
+- **Orchestration cost ~22% of spend** at `every: 2` and bought plan
+  persistence, one course correction, and durable memory. That is a
+  defensible ratio, and it is measurable per-role only because the `task:`
+  field was threaded through the logger.
 - **Reuse beat porting.** Phase D's room store, Phase A's permissions engine,
-  and Phase C's `RunDSL#dispatch` seam carried all four phases. The one thing
-  genuinely new was cross-session memory — the only gap the Week 2
-  architecture had left open.
+  and Phase C's `RunDSL#dispatch` seam carried all four phases. The one
+  genuinely new thing was cross-session memory — the only gap Week 2's
+  architecture had actually left open.
 
-_The conclusion that matters — whether an orchestrated agent plays better
-than a single one — is exactly what has not been measured yet._
+**What still isn't measured:** whether an orchestrated agent *plays better* —
+survives longer, achieves more — than a single one. Two short sessions show
+the machinery works, not that it wins. That needs a longer run with a goal
+hard enough to fail at.
 
 ## Key Takeaway
 
-_Provisional, pending live results._
+**A plan is only as good as the place you put it.** The most consequential
+decision of the week was not adding a Planner — it was noticing that a plan
+stored as a message gets silently deleted by the compactor, and that the
+system prompt is the only part of the context nothing evicts. The same shape
+recurred three more times: the state block that must not accumulate, the
+digest that must be rewritten rather than appended, the subagent context that
+must not touch its caller's. In each case the design question was not "what
+should this component do?" but "where does this survive, and what deletes
+it?"
 
-**A plan is only as good as the place you put it.** The single most
-consequential decision of the week was not adding a Planner — it was
-noticing that a plan stored as a message gets silently deleted by the
-compactor, and that the system prompt is the only part of the context nothing
-evicts. The same shape recurred three more times: the state block that must
-not accumulate, the digest that must be rewritten rather than appended, the
-subagent context that must not touch its caller's. In each case the design
-question was not "what should this component do?" but "where does this
-survive, and what deletes it?"
+The live run added a second, less comfortable one. **Building a capability is
+not the same as needing it.** The Navigator is the best-argued component of
+the week — bounded, isolated, permission-gated, justified in writing against
+a deterministic alternative — and the agent never once asked it anything. The
+argument was sound and the thing may still be unnecessary. Two sessions is
+not enough to conclude that, which is exactly why it is written down as an
+open question rather than a feature.

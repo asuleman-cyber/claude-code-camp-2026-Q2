@@ -1,7 +1,8 @@
 # Week 3 — Phase H: Knowledge as a Query API
 
-**Status: built and tested; not yet verified live against a real model.**
-Companion: [`capability_plan`](../capability_plan). Previous:
+**Status: built, tested, and verified live** — the Judge used it unprompted
+against a real map. See [Verified live](#verified-live-2026-08-09).
+Companion: [`capability_plan`](capability_plan). Previous:
 [G — orchestrator](week3_phase_g_orchestrator.md).
 
 Phase D gave the agent a room graph in `knowledge.sqlite3`. It only ever came
@@ -101,7 +102,7 @@ would have had a model re-asking a question it had already answered
 correctly. Split into two branches; `test_room_reports_an_unknown_name` pins
 it.
 
-## Verified so far
+## Verified offline (before the live run)
 
 Offline, against a real MCP server (`FakeMud`), a real on-disk SQLite store,
 and real `Permissions` — no model call involved:
@@ -130,12 +131,46 @@ no room called "Atlantis" has been visited.
 store still read-only: true
 ```
 
+## Verified live (2026-08-09)
+
+Two sessions against the real CircleMUD, `claude-haiku-4-5`. The open
+question was whether the Judge would use the tool at all or ignore it. It
+used it, twice, unprompted, in the only judgement it performed:
+
+```
+[judge] world_knowledge {"kind":"overview"}
+[judge] world_knowledge {"kind":"room", "name":"The Common Square"}
+```
+
+Two of the three modes exercised, and in a sensible order — orient first,
+then ask about the specific room the plan was about. Nothing else in either
+session called it: the Player doesn't have it (by design) and the Navigator
+never ran (see Phase I).
+
+The map it was querying was real, and had been built by the Player's own
+movement during the same run:
+
+```
+rooms:        4      Poor Alley (x2)
+walked edges: 5      The Eastern End Of Poor Alley (x3)
+frontiers:    7      The Common Square (x1)
+entities:     4      Wall Road (x1)
+```
+
+The revisit counts are worth noting: `x2` and `x3` mean Phase D's
+known-room path fired repeatedly, resolving those rooms with **zero MUD
+round trips**, while `frontiers: 7` is the unexplored-exit set the room
+lookup renders as `(unexplored)`.
+
+**`kind=route` was never exercised.** The Judge had no reason to ask for one
+— the plans it assessed were about rooms the character was already standing
+in or next to. So the BFS is unit-tested but has not answered a real model's
+question yet, and neither has the ambiguity path.
+
 ## Not yet done
 
-- **Live verification against a real model.** Same gap as Phase G: the
-  plumbing is proven, the prompt wording is not. The specific thing to watch
-  is whether the Judge uses `kind=route` to catch geographically impossible
-  plans, or ignores the tool entirely.
+- **`kind=route` unexercised live** (above). It is the mode with the most
+  logic behind it and the least live evidence.
 - **Ambiguity resolution is "ask again".** More than one room matching a name
   returns a list and asks for the exact name, costing a round trip. Ranking
   by proximity to the current room would usually pick right first time.
