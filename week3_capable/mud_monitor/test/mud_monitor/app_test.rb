@@ -119,6 +119,20 @@ module MudMonitor
       assert_includes last_response.body, "The character is stuck."
     end
 
+    # Phase I — the Navigator writes into the same transcript.
+    def test_session_detail_renders_navigator_answers
+      write_session("2026-07-31-aaa", at: "2026-07-31T00:00:00Z", extra_lines: [
+        { "phase" => "orchestrator", "role" => "navigator", "event" => "answer",
+          "text" => "north, east - 2 steps." }.to_json
+      ])
+
+      get "/sessions/2026-07-31-aaa"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "task-navigator"
+      assert_includes last_response.body, "north, east - 2 steps."
+    end
+
     def test_session_detail_has_no_trace_link_when_tracing_was_off
       write_session("2026-07-31-aaa", at: "2026-07-31T00:00:00Z")
 

@@ -38,6 +38,7 @@ module Boukensha
         poll
         mud_status
         world_knowledge
+        consult_navigator
       ].freeze
 
       # A judgement is a paragraph and a verdict, not an investigation. Five

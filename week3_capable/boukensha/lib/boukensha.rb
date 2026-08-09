@@ -123,14 +123,12 @@ module Boukensha
 
     servers = register_mcp_servers(registry, cfg, permissions: perms)
 
-    dsl = RunDSL.new(registry)
-    dsl.instance_eval(&block) if block
-    perms.validate_referenced!(registry.tool_names)
-
-    be      = build_backend(backend, model: model, api_key: api_key, ollama_host: ollama_host)
-    builder = PromptBuilder.new(ctx, be)
-    client  = Client.new(builder)
-    logger  = Logger.new(log: log, telemetry: Telemetry.build(config: cfg), snapshot: {
+    # The logger is built before the run block (Phase I) rather than after:
+    # the Orchestrator needs it, and the Orchestrator has to exist before
+    # validate_referenced! so that `consult_navigator` is already registered
+    # when the allowlist is checked. Nothing about Logger.new depends on the
+    # backend or builder, so moving it up is free.
+    logger = Logger.new(log: log, telemetry: Telemetry.build(config: cfg), snapshot: {
       max_iterations:    cfg.agent_max_iterations,
       max_turn_tokens:   cfg.agent_max_turn_tokens,
       max_output_tokens: (max_output_tokens || cfg.agent_max_output_tokens),
@@ -138,6 +136,22 @@ module Boukensha
       model:             model,
       provider:          backend
     })
+
+    dsl = RunDSL.new(registry)
+    dsl.instance_eval(&block) if block
+
+    # Built here, not at Repl.new, because the Player's own registry needs
+    # `consult_navigator` on it — and that tool is the Orchestrator's.
+    orchestrator = Orchestrator.build(cfg: cfg, servers: servers, logger: logger,
+                                      ollama_host: ollama_host,
+                                      knowledge_store: dsl.knowledge_store)
+    orchestrator&.register_navigator_tool(registry)
+
+    perms.validate_referenced!(registry.tool_names)
+
+    be      = build_backend(backend, model: model, api_key: api_key, ollama_host: ollama_host)
+    builder = PromptBuilder.new(ctx, be)
+    client  = Client.new(builder)
 
     repl = Repl.new(
       context:    ctx,
@@ -156,9 +170,7 @@ module Boukensha
       version:    VERSION,
       api_key:    api_key,
       servers:    server_summary(servers),
-      orchestrator: Orchestrator.build(cfg: cfg, servers: servers, logger: logger,
-                                       ollama_host: ollama_host,
-                                       knowledge_store: dsl.knowledge_store)
+      orchestrator: orchestrator
     )
 
     if tui && defined?(Tui)

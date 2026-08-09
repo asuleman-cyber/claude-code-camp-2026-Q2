@@ -149,7 +149,50 @@ the Judge's tool; Phase I's Navigator is the next caller.
 **Tests:** `boukensha` 210 runs / 606 assertions, `mud_manager` 41 / 217,
 `mud_monitor` 71 / 249 — all green.
 
-## Phases I–J
+## Phase I — Navigator subagent (built; not yet verified live)
+
+Full write-up:
+[`docs/plans/capability/week3_phase_i_navigator.md`](../docs/plans/capability/week3_phase_i_navigator.md).
+
+A bounded, read-only subagent in front of Phase H's map, exposed to callers
+as one tool: `consult_navigator(to:, from:)`.
+
+**Why an LLM at all, when Phase H's BFS is exact?** It only earns the call
+where BFS structurally can't answer: a destination that isn't a room name
+("a shop", "back where the guard was"), *no* route existing (the useful reply
+is then the nearest unexplored exit heading that way, not "no"), or several
+rooms matching. Where the caller has an exact room name and a route exists,
+`world_knowledge(kind: route)` is cheaper and identical — and the tool's own
+description says so.
+
+- **`Tasks::Navigator`** (`boukensha/lib/boukensha/tasks/navigator.rb`) —
+  `max_iterations: 4`, and an allowlist of exactly `world_knowledge`.
+- It **cannot move or look**, enforced by Phase A's `Permissions` rather than
+  by convention: its registry contains one tool, and dispatching
+  `tbamud__move` raises `UnknownToolError`.
+- Isolated: its own Context, so the caller's history gains exactly one
+  tool_call/tool_result pair and none of the intermediate map reads.
+
+Registered on the **Player** (the primary caller — it is the one that moves,
+and routing is the one thing the state block can't tell it) and the **Judge**
+(to check a plan's geography). Not the Planner, which stays toolless.
+
+Enabling it needs both `tasks.navigator.enabled: true` *and* a knowledge
+store — without one its only tool doesn't exist, so it would be a model call
+guaranteed to answer "I don't know".
+
+```yaml
+tasks:
+  navigator:
+    provider: anthropic
+    model:    claude-haiku-4-5
+    enabled:  true
+```
+
+**Tests:** `boukensha` 225 runs / 651 assertions, `mud_manager` 41 / 217,
+`mud_monitor` 72 / 254 — all green.
+
+## Phase J
 
 Not started. See [`docs/plans/capability_plan`](../docs/plans/capability_plan):
-I (Navigator subagent), J (cross-session character memory).
+cross-session character memory.

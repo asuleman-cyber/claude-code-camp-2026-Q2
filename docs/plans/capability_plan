@@ -160,7 +160,25 @@ here. Instead:
   registries, gated by `Permissions` — the Player keeps its existing
   zero-tool-call auto-injected state block unchanged.
 
-### Phase I — Navigator subagent
+### Phase I — Navigator subagent — **BUILT** (not yet verified live)
+
+Write-up: [`capability/week3_phase_i_navigator.md`](capability/week3_phase_i_navigator.md).
+Tests: `boukensha` 225/651, `mud_manager` 41/217, `mud_monitor` 72/254, green.
+
+Built as planned. Two notes:
+
+1. **It had to justify existing.** Phase H's `route_to` BFS is already exact,
+   and this project prefers deterministic over LLM (Phase C deleted an LLM
+   room-inspector for that reason). The Navigator earns its call only for
+   destinations that aren't room names, for "no route exists — now what?",
+   and for ambiguity. `consult_navigator`'s description tells callers holding
+   an exact room name to use `world_knowledge` instead.
+2. **Registered on Player and Judge, not Planner** — third phase running that
+   the Planner stays toolless (Phase G's design). The Player *is* the primary
+   caller here, unlike Phase H: routing is the one thing its state block
+   cannot tell it.
+
+Original plan:
 
 - `Tasks::Navigator < Tasks::Base` (`task_name = "navigator"`, read-only,
   `max_iterations` small, e.g. 4) — denied `move`/`attack` via `allow:`
