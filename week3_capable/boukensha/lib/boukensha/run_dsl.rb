@@ -10,9 +10,20 @@ module Boukensha
     # unaffected.
     attr_accessor :hooks
 
+    # An open Mud::Memory::Store, set by the entrypoint alongside `hooks`
+    # (Phase H). The same instance Mud::Hooks writes through — subagents
+    # query the live graph, not a second connection to the same file.
+    #
+    # Set here rather than passed to .repl for the same reason `hooks` is:
+    # the store is created inside the run/repl block, which is the only place
+    # that knows whether a `mud` server is configured and whether sqlite3 is
+    # even installed.
+    attr_accessor :knowledge_store
+
     def initialize(registry, hooks: Hooks.new)
-      @registry = registry
-      @hooks    = hooks
+      @registry        = registry
+      @hooks           = hooks
+      @knowledge_store = nil
     end
 
     def tool(name, description:, parameters: {}, &block)

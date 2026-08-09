@@ -150,6 +150,15 @@ module BoukenshaLoader
             store: store,
             error_log: Boukensha::ErrorLog.from_env
           )
+
+          # Phase H: hand the SAME store to the orchestrator, so the Judge
+          # (and, from Phase I, the Navigator) can query the room graph the
+          # hooks above are filling in. One instance, not a second connection
+          # to the same file — the subagents read exactly what was just
+          # written, with no WAL visibility question to reason about.
+          require "boukensha/mud/knowledge_tool"
+          self.knowledge_store = store
+
           at_exit { store.close rescue nil }
         rescue LoadError
           warn "[boukensha] sqlite3 gem not installed — running without room memory (Phase D). " \

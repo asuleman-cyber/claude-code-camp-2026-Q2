@@ -285,7 +285,95 @@ module Boukensha
           @db.execute("SELECT * FROM entities ORDER BY last_seen_at DESC")
         end
 
+        # ---------- queries (Phase H — knowledge as a query API) ------------
+        # Read-only. Until Phase H the only way knowledge reached a model was
+        # Mud::Hooks injecting the *current* room's state block; nothing could
+        # ask about a room it wasn't standing in, or whether two rooms
+        # connect. These are what the `world_knowledge` native tool is built
+        # on (Mud::KnowledgeTool).
+
+        # The whole map in one query, rather than N+1 per-room `room_exits`
+        # reads. mud_monitor's KnowledgeStore proved this shape out for the
+        # /knowledge/map view (see week2_phase_d_agent_memory.md's "Knowledge
+        # map" note); this is the same idea on the agent-facing side.
+        def all_exits
+          @db.execute("SELECT * FROM room_exits")
+        end
+
+        # Rooms whose name matches, exactly first, then by substring — the
+        # model is quoting a room name it read in prose, so it will get the
+        # case and the leading article wrong sooner or later.
+        def find_rooms_by_name(name)
+          needle = name.to_s.strip
+          return [] if needle.empty?
+
+          @db.execute(
+            "SELECT * FROM rooms WHERE name = ? COLLATE NOCASE " \
+            "UNION " \
+            "SELECT * FROM rooms WHERE name LIKE ? COLLATE NOCASE AND name <> ? COLLATE NOCASE " \
+            "ORDER BY name",
+            [needle, "%#{needle}%", needle]
+          )
+        end
+
+        # Shortest known route between two rooms, as an array of
+        # { direction:, room_id:, name: } steps, or nil if no path is known.
+        # [] means from == to.
+        #
+        # Breadth-first over `room_exits` where target_room_id IS NOT NULL —
+        # which is exactly "edges the agent has actually walked", since that
+        # column stays NULL until it has stood in the destination. So this
+        # answers "can I get there by a route I already know?", never "does
+        # the world contain a path?" A frontier is not a route.
+        #
+        # Unweighted: every MUD step costs one move, so BFS gives a genuine
+        # shortest path with no need for Dijkstra.
+        def route_to(from_id:, to_id:)
+          from_id = from_id.to_i
+          to_id   = to_id.to_i
+          return [] if from_id == to_id
+          return nil if from_id.zero? || to_id.zero?
+
+          adjacency = Hash.new { |h, k| h[k] = [] }
+          all_exits.each do |exit|
+            target = exit["target_room_id"]
+            next if target.nil?
+
+            adjacency[exit["room_id"]] << { direction: exit["direction"], room_id: target }
+          end
+
+          queue   = [from_id]
+          came_by = { from_id => nil } # room_id => { direction:, from: }
+
+          until queue.empty?
+            current = queue.shift
+            adjacency[current].each do |edge|
+              nxt = edge[:room_id]
+              next if came_by.key?(nxt)
+
+              came_by[nxt] = { direction: edge[:direction], from: current }
+              return build_path(came_by, to_id) if nxt == to_id
+
+              queue << nxt
+            end
+          end
+
+          nil
+        end
+
         private
+
+        # Walk the BFS predecessor map back from the destination, then
+        # reverse — the path is discovered end-first.
+        def build_path(came_by, to_id)
+          steps = []
+          cursor = to_id
+          while (link = came_by[cursor])
+            steps << { direction: link[:direction], room_id: cursor, name: find_room(cursor)&.[]("name") }
+            cursor = link[:from]
+          end
+          steps.reverse
+        end
 
         def apply_pragmas!
           @db.execute("PRAGMA journal_mode = WAL")

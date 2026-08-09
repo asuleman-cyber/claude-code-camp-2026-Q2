@@ -125,7 +125,22 @@ Original plan:
   color coding (Planner/Judge/Player) — additive, same file the trace-link
   work (Phase 3) already extended.
 
-### Phase H — Knowledge as a query API (not a new store)
+### Phase H — Knowledge as a query API — **BUILT** (not yet verified live)
+
+Write-up: [`capability/week3_phase_h_knowledge.md`](capability/week3_phase_h_knowledge.md).
+Tests: `boukensha` 210/606, `mud_manager` 41/217, `mud_monitor` 71/249, green.
+
+Built as planned — in-process, no second MCP server — plus `all_exits`,
+`find_rooms_by_name` and a `route_to` BFS on `Store`, surfaced as one
+`world_knowledge` tool with `kind=overview|room|route`.
+
+One departure: **the Planner does not get the tool**, though the plan listed
+it alongside Judge and Navigator. Phase G made the Planner toolless
+deliberately (one bare model call, no loop); handing it a tool turns it back
+into a slower Player. The Judge returning `replan` with "no known route to X"
+is the intended path for a geographically impossible plan.
+
+Original plan:
 
 Do **not** stand up a second process/MCP server the way the reference did
 (`log_viz --mcp`) — room memory already lives in-process inside `boukensha`

@@ -156,7 +156,9 @@ module Boukensha
       version:    VERSION,
       api_key:    api_key,
       servers:    server_summary(servers),
-      orchestrator: Orchestrator.build(cfg: cfg, servers: servers, logger: logger, ollama_host: ollama_host)
+      orchestrator: Orchestrator.build(cfg: cfg, servers: servers, logger: logger,
+                                       ollama_host: ollama_host,
+                                       knowledge_store: dsl.knowledge_store)
     )
 
     if tui && defined?(Tui)
@@ -219,12 +221,17 @@ module Boukensha
   # It gets its own Registry built with its own Permissions, so its tool
   # surface is narrower than the Player's even though both draw on the same
   # MCP connection.
-  def self.subagent_context(servers, permissions:, system:, context_window:)
+  # native_tools: callables taking the new Registry, for tools that don't
+  # come from an MCP server — Phase H's `world_knowledge` is the first. They
+  # run through the same Registry#tool gate as everything else, so a
+  # subagent's permissions still decide whether the tool exists for it.
+  def self.subagent_context(servers, permissions:, system:, context_window:, native_tools: [])
     ctx      = Context.new(system: system, context_window: context_window)
     registry = Registry.new(ctx, permissions: permissions)
     servers.each do |server|
       Tools::Mcp.register_client(registry, server[:client], prefix: server[:prefix], permissions: permissions)
     end
+    native_tools.each { |register| register.call(registry) }
     [ctx, registry]
   end
 

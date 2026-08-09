@@ -203,6 +203,44 @@ class TestOrchestrator < Minitest::Test
     assert orch.judge_due?(:completed)   # turn 3
   end
 
+  # ---- Phase H: the knowledge tool reaches subagents ---------------------
+
+  def test_no_knowledge_store_means_no_native_tools
+    assert_empty build_orchestrator(judge_enabled: true).native_tools
+  end
+
+  def test_a_knowledge_store_produces_the_world_knowledge_tool
+    require "boukensha/mud/memory/store"
+    require "boukensha/mud/knowledge_tool"
+    store = Boukensha::Mud::Memory::Store.new(":memory:")
+
+    orch = build_orchestrator(judge_enabled: true, knowledge_store: store)
+    ctx      = Boukensha::Context.new(system: "t")
+    registry = Boukensha::Registry.new(ctx, permissions: Boukensha::Tasks::Judge.permissions)
+    orch.native_tools.each { |t| t.call(registry) }
+
+    assert_includes registry.tool_names, "world_knowledge"
+  ensure
+    store&.close
+  end
+
+  # The Player is deliberately excluded: its room knowledge already arrives
+  # in the state block Mud::Hooks injects every iteration, so a tool to ask
+  # for it would be a round trip to learn what it was just told. Its registry
+  # is built from settings.yaml's mcp_servers alone — native_tools is a
+  # subagent-only path — so the tool must be absent even with a store open.
+  def test_the_player_does_not_get_the_knowledge_tool
+    require "boukensha/mud/memory/store"
+    store = Boukensha::Mud::Memory::Store.new(":memory:")
+    build_orchestrator(judge_enabled: true, knowledge_store: store)
+
+    ctx    = Boukensha::Context.new(system: "player")
+    player = Boukensha::Registry.new(ctx) # permissive, as the player's is
+    refute_includes player.tool_names, "world_knowledge"
+  ensure
+    store&.close
+  end
+
   # ---- failure handling -------------------------------------------------
 
   # The orchestrator is an addition to a working agent. If planning breaks,
@@ -255,13 +293,14 @@ class TestOrchestrator < Minitest::Test
     end
   end
 
-  def build_orchestrator(planner_enabled: false, judge_enabled: false, yaml_extra: nil)
+  def build_orchestrator(planner_enabled: false, judge_enabled: false, yaml_extra: nil, knowledge_store: nil)
     yaml = +"tasks:\n  judge:\n    provider: anthropic\n    model: claude-haiku-4-5\n"
     yaml << yaml_extra if yaml_extra
     config_from(yaml) do |cfg|
       return Boukensha::Orchestrator.new(
         cfg: cfg, servers: [], logger: null_logger,
-        planner_enabled: planner_enabled, judge_enabled: judge_enabled
+        planner_enabled: planner_enabled, judge_enabled: judge_enabled,
+        knowledge_store: knowledge_store
       )
     end
   end

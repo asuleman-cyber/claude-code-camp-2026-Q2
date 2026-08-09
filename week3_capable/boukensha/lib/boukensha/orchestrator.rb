@@ -36,26 +36,44 @@ module Boukensha
 
     # nil unless at least one role is enabled — so callers can treat "no
     # orchestrator" and "orchestrator with nothing switched on" identically.
-    def self.build(cfg:, servers:, logger:, ollama_host: "http://localhost:11434")
+    def self.build(cfg:, servers:, logger:, ollama_host: "http://localhost:11434", knowledge_store: nil)
       planner = Tasks::Planner.enabled?(cfg.tasks(Tasks::Planner.task_name))
       judge   = Tasks::Judge.enabled?(cfg.tasks(Tasks::Judge.task_name))
       return nil unless planner || judge
 
       new(cfg: cfg, servers: servers, logger: logger, ollama_host: ollama_host,
-          planner_enabled: planner, judge_enabled: judge)
+          planner_enabled: planner, judge_enabled: judge, knowledge_store: knowledge_store)
     end
 
+    # knowledge_store: an open Mud::Memory::Store, or nil. nil is ordinary,
+    # not an error — no `mud` server configured, or sqlite3 not installed
+    # (see boukensha_loader.rb). Subagents then simply run without the
+    # world_knowledge tool, the same way the Player runs without memory.
     def initialize(cfg:, servers:, logger:, ollama_host: "http://localhost:11434",
-                   planner_enabled: false, judge_enabled: false)
+                   planner_enabled: false, judge_enabled: false, knowledge_store: nil)
       @cfg             = cfg
       @servers         = servers
       @logger          = logger
       @ollama_host     = ollama_host
       @planner_enabled = planner_enabled
       @judge_enabled   = judge_enabled
+      @knowledge_store = knowledge_store
       @plan            = nil
       @verdict         = nil
       @turns_since_judge = 0
+    end
+
+    # Native tools every subagent gets, as Registry-taking callables.
+    #
+    # The Player deliberately gets none of this: its room knowledge already
+    # arrives for free in the state block Mud::Hooks injects each iteration,
+    # and giving it a tool to ask for what it is already being told would be
+    # a round trip to learn nothing. Phase H is about the roles that *aren't*
+    # standing in the room.
+    def native_tools
+      return [] unless @knowledge_store
+
+      [->(registry) { Mud::KnowledgeTool.register(registry, store: @knowledge_store) }]
     end
 
     def planner_enabled? = @planner_enabled
@@ -172,7 +190,8 @@ module Boukensha
       perms       = Tasks::Judge.permissions
       judge_ctx, registry = Boukensha.subagent_context(@servers,
                                            permissions: perms, system: system,
-                                           context_window: Models.context_window(model))
+                                           context_window: Models.context_window(model),
+                                           native_tools: native_tools)
       judge_ctx.add_message(:user, judge_brief(context: context, stop_reason: stop_reason))
 
       be      = Boukensha.build_backend(backend, model: model,

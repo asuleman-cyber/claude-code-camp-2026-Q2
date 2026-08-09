@@ -109,8 +109,47 @@ server with the model call stubbed; no actual Planner or Judge API call has
 been made yet, so the two `prompts/*/system.md` files are still untested
 drafts. See the write-up's "Not yet done".
 
-## Phases H–J
+## Phase H — knowledge as a query API (built; not yet verified live)
+
+Full write-up:
+[`docs/plans/capability/week3_phase_h_knowledge.md`](../docs/plans/capability/week3_phase_h_knowledge.md).
+
+Phase D's room graph only ever came back out as the *current* room's state
+block. Phase H adds the ask side: a `world_knowledge` native tool
+(`boukensha/lib/boukensha/mud/knowledge_tool.rb`) with three modes —
+
+- `kind=overview` — how much of the world is known, and where the character is
+- `kind=room, name=X` — that room's description, exits (with `(unexplored)`
+  frontiers marked), and what has been seen there
+- `kind=route, to=X` — the shortest **already-walked** route from here
+
+backed by three new read-only `Store` methods: `route_to` (BFS over
+`room_exits`), `all_exits`, and `find_rooms_by_name`.
+
+Two things worth knowing:
+
+1. **No second process.** The reference moved this to a separate
+   `log_viz --mcp` server; here the loader hands the orchestrator the *same*
+   `Store` instance `Mud::Hooks` writes through, so a subagent reads exactly
+   what was just written — no subprocess, no handshake, no second handle on
+   a database this process already has open.
+
+2. **An unwalked exit is never part of a route.** `route_to` only follows
+   edges with `target_room_id` set, which Phase D leaves NULL until the agent
+   has actually stood in the destination. So it answers "can I get there by a
+   route I know?", not "does a path exist?" Frontiers still *show* in a room
+   lookup, marked `(unexplored)` — that is what makes "where next?" a
+   decision rather than a guess.
+
+The Player deliberately gets none of this (its knowledge already arrives in
+the state block; a tool to re-ask would undo Phase D's zero-call revisits),
+and so does the Planner — Phase G made it toolless on purpose. Today it is
+the Judge's tool; Phase I's Navigator is the next caller.
+
+**Tests:** `boukensha` 210 runs / 606 assertions, `mud_manager` 41 / 217,
+`mud_monitor` 71 / 249 — all green.
+
+## Phases I–J
 
 Not started. See [`docs/plans/capability_plan`](../docs/plans/capability_plan):
-H (knowledge as a query API), I (Navigator subagent), J (cross-session
-character memory).
+I (Navigator subagent), J (cross-session character memory).
