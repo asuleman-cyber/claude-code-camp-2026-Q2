@@ -1,26 +1,27 @@
-# Week 2 — Phases D, E, F: what I built, what I skipped, and what to try
+# Week 2 — Phase D: The Agent Gets Memory
 
-Companion to [`week2_catchup_plan.md`](week2_catchup_plan.md). That file tracks the
-checklist; this one is the narrative — what actually got built, the real bugs I found
-and fixed along the way, every place I deliberately cut scope, and concrete
-suggestions for what to pick up next.
+**Status: done, in full.** Split out of the original combined report so each
+phase has its own file. Previous: [C — room survey](week2_phase_c_room_survey.md).
+Next: [E — player tracking](week2_phase_e_player_tracking.md). Companion:
+[`week2_catchup_plan.md`](week2_catchup_plan.md).
 
-The overall shape of the idea — give the agent memory instead of a room tool — was
-inspired by how Andrew approached the same problem in his own run at this camp. The
-design below is my own take on it, adapted to what I'd already built in Phases A–C
-(my `inspect` composite, my permissions engine, my deterministic room survey), not a
-port of his implementation.
+The idea — give the agent memory instead of a room tool — was inspired by how
+Andrew approached the same problem in his own run at this camp. The design
+below is my own take on it, adapted to what I'd already built in Phases A–C
+(my `inspect` composite, my permissions engine, my deterministic room
+survey), not a port of his implementation.
 
-**Test totals after this work:** `boukensha` 112 runs / 297 assertions,
-`mud_manager` 34 runs / 203 assertions, `mud_monitor` 39 runs / 117 assertions — all
-green (`rake test` in each directory). Every scenario below marked "verified live" was
-run against the real CircleMUD on `localhost:4000`, not just fixtures — where a real
-bug turned up, it's noted at the point it was found and fixed.
+**Test totals after Phases D–F:** `boukensha` 112 runs / 297 assertions,
+`mud_manager` 34 runs / 203 assertions, `mud_monitor` 39 runs / 117 assertions —
+all green (`rake test` in each directory). Every scenario below marked
+"verified live" was run against the real CircleMUD on `localhost:4000`, not
+just fixtures — where a real bug turned up, it's noted at the point it was
+found and fixed.
 
-> **Since this report was written**, two of its "try yourself" items — the knowledge
+> **Since this was written**, two of its "try yourself" items — the knowledge
 > map and player tracking — were actually built, following
-> [`player_map_plan.md`](player_map_plan.md). Both are flagged inline below where
-> they're described as unbuilt. Totals are now `boukensha` 132/364,
+> [`player_map_plan.md`](player_map_plan.md). Both are flagged inline below
+> where they're described as unbuilt. Totals are now `boukensha` 132/364,
 > `mud_manager` 37/216, `mud_monitor` 62/219.
 
 ---
@@ -163,146 +164,12 @@ calls: []                                    # zero MUD round trips
   returns `:ambiguous` distinctly from `nil` — `Mud::Hooks#resolve_room!` currently
   treats them the same; that's the one line to change, plus building out the
   arrival-edge/strong-fingerprint disambiguation described above.
+- **Play through a real session** with Phase D memory live and watch the Knowledge tab
+  fill in — the single best way to find out whether the weak-fingerprint simplification
+  actually causes problems in practice, before spending time on the fuller identity
+  resolver. `/knowledge/map` (above) makes duplicate-room symptoms visible at a glance
+  instead of buried in a table.
 
 ---
 
-## Phase E — Track the player (change capture only; three items skipped)
-
-### What got built: change capture
-
-`Boukensha::Mud::Memory::Journal` (`boukensha/lib/boukensha/mud/memory/journal.rb`) —
-an append-only JSONL log, daily-rotated like `sessions/`/`manager/`/`telnet/`. One
-method matters: `#upsert(stream:, key:, value:, **meta)` compares against the last
-value it saw for that `[stream, key]` **in this process** and writes a line only on an
-actual change. Callers always hand it the current reading; the journal is the only
-thing that decides "did this change."
-
-Wired into `Store#update_player_state` (every player-state write) and `Store#insert_room`
-(every new-room discovery, as a discrete `event`, since a room isn't a keyed value that
-changes). Off by default (`MUD_JOURNAL_DIR`), now enabled on the live profile via
-`.boukensha/.env`.
-
-**Verified live:**
-
-```json
-{"stream":"player","key":"current_room_id","from":null,"to":1,"seq":1,...}
-{"stream":"player","key":"last_direction","from":null,"to":null,"seq":2,...}
-```
-
-...and a second `before_model` call with no move in between produced **zero** new
-lines — confirming the no-op suppression works against real hook traffic, not just
-the unit tests.
-
-Mud Monitor gained a **Progression** page (`/progression`,
-`mud_monitor/lib/mud_monitor/journal_store.rb`) showing the raw change feed.
-
-### What got skipped, and why
-
-- **A deterministic test-player seeding script.** The idea is to delete and recreate
-  the configured character on every run, then apply an admin "uplift" (level, gold,
-  stats, skills, inventory, equipment) via commands like `set player gold <amount>`.
-  None of that was live-verified against this specific server — and given the
-  earlier lesson in this project (this MUD's actual `consider`/`examine` miss
-  messages turned out to differ from what I'd assumed going in), guessing at
-  *destructive* admin commands (character deletion!) without verifying them first
-  against the shared dev character was too risky to do under time pressure. **If you
-  build this:** live-verify every admin command against a throwaway character name
-  first, the same way `bin/reset` was built in Phase A — confirm `set <player> gold
-  <n>` (or whatever the actual syntax turns out to be) works as expected before
-  wiring it into a script that runs unattended.
-- **Multi-profile support.** Deliberately out of scope from the start — it touches
-  `Config`'s directory resolution, the CLI, and Mud Monitor's profile selector, which
-  is a bigger, more invasive change than the remaining time budget allowed for doing
-  carefully.
-- ~~**A fuller player schema (score/skills/inventory/equipment).**~~ **Built since**,
-  except skills — see below. The blocker named here was real and was the right call:
-  the fix was simply to *do* the capture step first. Doing it caught two things a
-  from-memory implementation would have got wrong — equipment slots are **not**
-  one-per-slot (two finger, two neck, two wrist slots all print the same bracketed
-  label, so the schema's `UNIQUE` constraint needed a `" (2)"` suffix to survive), and
-  `score` reports quest points on two different lines with two different spellings.
-  Skills/spells are still unbuilt for exactly the original reason: no `practice`
-  capture yet, and proficiency may print as a word rather than a percentage.
-
-### Try yourself
-
-- ~~Add a `player_inventory` table~~ — **built since** (plus `player_equipment` and the
-  score-sheet columns). Capturing the real output first was, again, what made it work.
-- `Journal` is generic — nothing stops you from calling `.upsert`/`.event` from
-  anywhere else that writes to `Store`, not just the two call sites wired in now (e.g.
-  `entity` threat/health changes, once you decide that's worth a time series too).
-
----
-
-## Phase F — Deeper observability (error log only; two items skipped)
-
-### What got built: agent error log
-
-`Boukensha::ErrorLog` (`boukensha/lib/boukensha/error_log.rb`) — one JSONL line per
-caught exception: class, message, first 20 backtrace frames, a free-form `context`
-string. Off by default (`BOUKENSHA_ERROR_LOG`), now enabled on the live profile.
-
-Two places actually use it:
-
-1. **`Mud::Hooks`' internal rescues.** Every `rescue StandardError` in `before_tools`/
-   `after_tool`/`before_model`/`scrape_vitals` used to just swallow the exception —
-   correct behavior (a broken hook must degrade the agent to "no memory," never crash
-   the turn), but with nowhere to see *that* it happened. Now it logs, still degrades
-   the same way.
-2. **A new top-level safety net in `Repl#run_turn`.** Before this, only `LoopError`
-   and `ApiError` were caught there — anything else (a genuinely unexpected exception)
-   propagated and **crashed the whole REPL process**, losing the conversation. Added a
-   broad `rescue StandardError` after the specific ones, logging with a backtrace and
-   printing a message that the session is still alive.
-
-**Verified live** with a real triggered failure (a broken `call_tool` lambda inside
-`Mud::Hooks#before_model`): the hook degraded silently as designed
-(`context.state_block` stayed `nil`, no exception reached the caller) and the error
-log captured the full exception with a real backtrace pointing at
-`RoomSurvey#call` → `Mud::Hooks#survey_and_persist!` → `#resolve_room!` →
-`#before_model`.
-
-Mud Monitor gained an **Errors** page (`/errors`,
-`mud_monitor/lib/mud_monitor/error_log_store.rb`), newest-first.
-
-### What got skipped, and why
-
-- **Work attribution** (operation IDs/parent IDs/nesting so hidden automatic work —
-  room surveys, hook DB writes — is visually distinguishable in mud_monitor from
-  model-selected tool calls). Real scope here is large — a full span/trace layer on
-  top of everything Phase D already does. Out of remaining budget.
-- **OpenTelemetry export.** I decided to skip this on the strength of a lesson I'd
-  already taken to heart from earlier in this project: it's cheap to bolt on, but it
-  doesn't actually answer "what is my loop doing" — it's useful for performance, not
-  behavior, which isn't the problem I'm trying to solve right now.
-
-### Try yourself
-
-- If you ever *do* want work attribution, the error log's `context:` string convention
-  (`"Mud::Hooks#before_model"`, `"Repl#run_turn"`) is a small step short of it — you
-  already know *where* things run, just not nested timing.
-- Consider rotating/pruning `error.log` if it ever gets used in anger — right now it's
-  one flat file with no size cap, which is fine for a dev tool but not forever.
-
----
-
-## Summary: what to actually do next
-
-In priority order, if you want to keep pushing on this:
-
-1. **Turn on Phase A's `allow:` permissions** on the live profile — it's built, tested,
-   and just needs an `allow:` block in `.boukensha/settings.yaml`. Still the top item.
-2. **Play through a real session** with Phase D memory live and watch the Knowledge
-   tab fill in — this is the single best way to find out whether the weak-fingerprint
-   simplification actually causes problems in practice, before spending time on the
-   fuller identity resolver. Now more useful than when this was written: `/knowledge/map`
-   makes duplicate-room symptoms visible at a glance instead of buried in a table.
-3. ~~**Knowledge map**~~ and ~~**player tracking**~~ — both built since (see the notes
-   above). What replaced them at the top of the list: **`plan_route`**, a read-only
-   tool that searches the known room graph instead of the agent rediscovering paths
-   one move at a time. The graph is now both complete enough and *visible* enough to
-   make that worth building.
-4. **Skills/spells tracking** — the last unbuilt slice of player state. Same recipe
-   as the rest: capture real `practice` output first, then write the parser against
-   it. That order is the one thing in this project that has worked every single time
-   it's been followed, and every time it was skipped, something was wrong.
+Next: [Phase E — track the player →](week2_phase_e_player_tracking.md)
