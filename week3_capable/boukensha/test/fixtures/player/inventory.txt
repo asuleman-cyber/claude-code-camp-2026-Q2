@@ -1,0 +1,4 @@
+You are carrying:
+  Nothing.
+
+22H 100M 83V (news) (motd) > 

@@ -1,0 +1,50 @@
+<h1>Progression</h1>
+<p class="meta">The change-capture journal (Phase E) — every actual change to player state or a new room discovery, in order. Not a snapshot: <code>knowledge.sqlite3</code> can tell you the agent is level 5; this tells you <em>when</em> it got there.</p>
+
+<% unless journal_store.enabled? %>
+  <p class="empty">
+    Not enabled. Set <code>MUD_JOURNAL_DIR</code> in <code>.boukensha/.env</code>, then restart the agent.
+  </p>
+<% else %>
+  <% if @dates.length > 1 %>
+    <div class="log-toolbar">
+      <form method="get" action="/progression" class="date-form">
+        <select name="date" onchange="this.form.submit()">
+          <% @dates.each do |d| %>
+            <option value="<%= d %>" <%= "selected" if @date == d %>><%= d %></option>
+          <% end %>
+        </select>
+      </form>
+    </div>
+  <% end %>
+
+  <% if @entries.empty? %>
+    <p class="empty">No changes recorded yet<%= " for #{@date}" if @date %>.</p>
+  <% else %>
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th class="nowrap">Time</th>
+          <th class="nowrap">Stream</th>
+          <th>What changed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @entries.each do |e| %>
+          <tr>
+            <td class="nowrap"><%= fmt_clock(e.at) %></td>
+            <td class="nowrap"><span class="mode-badge"><%= e.stream %></span></td>
+            <td>
+              <% if e.op %>
+                <%= e.op %><% if e.extra["name"] %>: <%= e.extra["name"] %><% end %>
+              <% else %>
+                <code><%= e.key %></code>: <%= e.from.inspect %> &rarr; <%= e.to.inspect %>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+    <p class="meta">Showing the last <%= @entries.length %> change<%= "s" unless @entries.length == 1 %><%= " for #{@date}" if @date %>.</p>
+  <% end %>
+<% end %>

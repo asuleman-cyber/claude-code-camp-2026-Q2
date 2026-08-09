@@ -1,0 +1,77 @@
+<%= knowledge_tabs %>
+
+<h1>Map</h1>
+<p class="meta">
+  The explored world, positioned by real compass direction from the earliest-recorded room &mdash;
+  north/south move the row, east/west move the column. Up/down exits show as a badge, not a third axis.
+  <%= live_badge(@live) %>
+</p>
+
+<% if !knowledge_store.enabled? %>
+  <p class="empty">
+    No <code><%= settings.knowledge_db %></code> yet. It's created the first time the agent runs with a <code>mud:</code> MCP server configured.
+  </p>
+<% elsif @layout.positioned.empty? %>
+  <p class="empty">No rooms recorded yet.</p>
+<% else %>
+  <div class="statstrip">
+    <div class="statstrip-head">
+      <span class="statstrip-model">Legend</span>
+      <span class="statstrip-cost">
+        <%= @layout.positioned.length %> room<%= "s" unless @layout.positioned.length == 1 %> &middot;
+        <%= @layout.edges.length %> connection<%= "s" unless @layout.edges.length == 1 %><% if @layout.disconnected.any? %> &middot; <%= @layout.disconnected.length %> disconnected<% end %>
+      </span>
+    </div>
+    <div class="statstrip-total map-legend">
+      <span class="legend-item"><span class="legend-swatch legend-connection"></span> connected exit (a shared border between two rooms)</span>
+      <span class="legend-item"><span class="legend-swatch legend-current"></span> current room</span>
+      <span class="legend-item"><span class="map-badges legend-badge">&uarr;&darr;</span> up/down exit</span>
+      <span class="legend-item"><span class="legend-swatch legend-displaced"></span> displaced &mdash; its true cell was already taken</span>
+    </div>
+  </div>
+
+  <h2>Map</h2>
+  <div class="map-grid-wrap">
+    <div class="map-grid">
+      <% @layout.positioned.each do |p| %>
+        <% classes = ["map-room"] %>
+        <% classes << "current" if @player && @player["current_room_id"] == p.room["id"] %>
+        <% classes << "displaced" if p.displaced %>
+        <% (@sides[p.room["id"]] || []).uniq.each { |dir| classes << "connected-#{dir}" } %>
+        <div class="<%= classes.join(" ") %>" style="grid-row: <%= p.row %>; grid-column: <%= p.col %>;"<% if p.displaced %> title="Displaced: this room's true grid cell was already taken by another room. The MUD's geography is not euclidean, so its position here is approximate."<% end %>>
+          <a href="/knowledge/rooms/<%= p.room["id"] %>"><%= p.room["name"] %></a>
+          <% unless p.badges.empty? %>
+            <span class="map-badges"><%= p.badges.map { |b| b == "up" ? "&uarr;" : "&darr;" }.join(" ") %></span>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <% unless @layout.disconnected.empty? %>
+    <h2>Disconnected</h2>
+    <p class="meta">Not reachable from the anchor room by a known north/south/east/west path (a teleporter, a one-way exit, or a genuinely separate area).</p>
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th class="nowrap">Visits</th>
+          <th class="nowrap">Surveyed</th>
+          <th class="nowrap">First seen</th>
+          <th class="nowrap">Last seen</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @layout.disconnected.each do |room| %>
+          <tr>
+            <td><a href="/knowledge/rooms/<%= room["id"] %>"><%= room["name"] %></a></td>
+            <td class="nowrap"><%= room["visit_count"] %></td>
+            <td class="nowrap"><%= room["surveyed_at"] ? "&#10003;" : "&mdash;" %></td>
+            <td class="nowrap"><%= format_time(room["first_seen_at"]) %></td>
+            <td class="nowrap"><%= format_time(room["last_seen_at"]) %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+<% end %>

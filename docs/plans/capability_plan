@@ -78,7 +78,30 @@ touched. Continue the existing "Phase" lettering (A–F already used) into
 `docs/plans/observability/week2_phase_*.md`) plus this file as the rollup
 (mirroring `week2_catchup_plan.md`).
 
-### Phase G — Orchestrator: Planner + Judge
+### Phase G — Orchestrator: Planner + Judge — **BUILT** (not yet verified live)
+
+Write-up: [`capability/week3_phase_g_orchestrator.md`](capability/week3_phase_g_orchestrator.md).
+Built in `week3_capable/` (forked from `week2_observability/`). Tests:
+`boukensha` 177/525, `mud_manager` 41/217, `mud_monitor` 71/249, all green.
+
+Three deviations from the plan below, each deliberate:
+
+1. **`role: inspector` became a `Permissions` allowlist.** This repo's tool
+   specs have no role concept; adding one would mean a second gate beside
+   Phase A's. `Tasks::Judge::READ_ONLY_TOOLS` is a code constant fed through
+   `Permissions` — same guarantee, one gate. (The plan's own parenthetical
+   already called for reusing `Permissions`; this just resolves the tension
+   with the borrowed `role:` wording.)
+2. **`Session.play` was not built** — the plan offered it *or* "an equivalent
+   wrapper around the existing `Repl`", and the REPL wrapper is what shipped.
+   A component whose job is deciding when to stop should keep a human in the
+   loop on its first outing. The autonomous loop remains open.
+3. **`register_mcp_servers` changed shape** (`{name => count}` →
+   `[{name:, client:, prefix:, count:}]`) so a subagent can share the
+   Player's MUD connection instead of opening a second login as the same
+   character. This is the seam Phase I's Navigator will reuse.
+
+Original plan:
 
 - `Tasks::Planner < Tasks::Base` (`task_name = "planner"`, no tools) and
   `Tasks::Judge < Tasks::Base` (`task_name = "judge"`, read-only tools only)

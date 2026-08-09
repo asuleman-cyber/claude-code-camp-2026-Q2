@@ -1,0 +1,65 @@
+<h1>Manager Log <%= live_badge(@live) %></h1>
+<p class="meta">
+  What mud_manager actually executed and returned — one row per tool call.
+</p>
+
+<% unless manager_store.enabled? %>
+  <p class="empty">
+    Not enabled. Set <code>MUD_MANAGER_LOG_DIR</code> in the <code>mud:</code> MCP
+    server's <code>env:</code> block in <code>.boukensha/settings.yaml</code>, then
+    restart the agent.
+  </p>
+<% else %>
+  <div class="log-toolbar">
+    <% if @dates.length > 1 %>
+      <form method="get" action="/manager" class="date-form">
+        <select name="date" onchange="this.form.submit()">
+          <% @dates.each do |d| %>
+            <option value="<%= d %>" <%= "selected" if @date == d %>><%= d %></option>
+          <% end %>
+        </select>
+      </form>
+    <% end %>
+    <% if @live %>
+      <a href="<%= query_merge("live" => "0") %>" class="filter-clear">Pause auto-refresh</a>
+    <% elsif manager_store.live?(date: @date) %>
+      <a href="<%= query_merge("live" => nil) %>" class="filter-clear">Resume auto-refresh</a>
+    <% end %>
+  </div>
+
+  <% if @entries.empty? %>
+    <p class="empty">No manager log entries yet<%= " for #{@date}" if @date %>.</p>
+  <% else %>
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th class="nowrap">Time</th>
+          <th class="nowrap">Mode</th>
+          <th>Tool</th>
+          <th>Args</th>
+          <th>Received</th>
+          <th class="nowrap">Elapsed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @entries.each do |e| %>
+          <tr class="<%= "log-row-error" if e.error %>">
+            <td class="nowrap"><%= fmt_clock(e.at) %></td>
+            <td class="nowrap"><span class="mode-badge mode-<%= e.mode %>"><%= e.mode %></span></td>
+            <td class="tool-cell"><%= e.tool %></td>
+            <td class="args-cell"><%= h(format_args(e.args)) %></td>
+            <td class="received-cell">
+              <% if e.error %>
+                <span class="tool-badge">error</span> <%= h(e.error) %>
+              <% else %>
+                <pre class="tool-result tool-result-inline"><%= ansi_html(truncate(e.received, 300)) %></pre>
+              <% end %>
+            </td>
+            <td class="nowrap"><%= e.elapsed_ms ? "#{e.elapsed_ms}ms" : "&mdash;" %></td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+    <p class="meta">Showing the last <%= @entries.length %> entr<%= @entries.length == 1 ? "y" : "ies" %><%= " for #{@date}" if @date %>.</p>
+  <% end %>
+<% end %>

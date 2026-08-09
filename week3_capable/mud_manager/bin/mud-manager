@@ -1,0 +1,41 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+
+require "mud_manager"
+require "mud_manager/mcp/server"
+require "mud_manager/mcp/spec"
+
+def usage
+  <<~TXT
+    mud-manager — CircleMUD sessions, command primitives, and an MCP daemon.
+
+    Usage:
+      mud-manager --mcp          Run the MCP server over stdio (the daemon).
+      mud-manager --dump-spec    Print the language-neutral tool spec (JSON) and exit.
+      mud-manager --list-tools   Print tool names, one per line, and exit.
+      mud-manager --version      Print the gem version and exit.
+      mud-manager --help         Show this message.
+
+    Credentials for --mcp come from the environment: MUD_HOST, MUD_PORT,
+    MUD_NAME, MUD_PASSWORD (never from tool arguments).
+  TXT
+end
+
+case ARGV.first
+when "--mcp"
+  MudManager::Mcp::Server.new.run
+when "--dump-spec"
+  puts MudManager::Mcp::Spec.to_json_pretty
+when "--list-tools"
+  MudManager::Mcp::ToolSpec::TOOLS.each { |t| puts t.name }
+when "--version"
+  puts MudManager::VERSION
+when "--help", nil
+  puts usage
+else
+  warn "mud-manager: unknown argument #{ARGV.first.inspect}"
+  warn usage
+  exit 1
+end
