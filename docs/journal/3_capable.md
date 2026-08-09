@@ -1,245 +1,114 @@
 # Week 3 Technical Documentation
 
-> **Status:** Phases G–J built and tested; **G, H and J verified live**
-> against a real model and the real CircleMUD on 2026-08-09. **Phase I (the
-> Navigator) was offered to the model twice and never called**, so it remains
-> unvalidated. Per-phase detail lives in
-> [`docs/plans/capability/`](../plans/capability/).
-
 ## Problems observed in Week 2
-
-- The agent could play, but nothing in it could state what it was trying to
-  achieve. Every turn started from the user's last sentence.
-- Nothing ever checked whether play was still going anywhere. A turn that
-  burned its whole iteration budget going in circles looked, from outside,
-  exactly like one that made progress.
-- Phase D built a room graph, and only one thing could read it: the state
-  block for the room the agent was standing in. No role could ask about
-  anywhere else.
-- Everything learned died with the process. Restarting meant relearning that
-  the pit fiend kills you.
+- The agent could play, but nothing in it could state what it was trying to achieve — every turn started from the user's last sentence.
+- Nothing ever checked whether play was still going anywhere. A turn that burned its whole iteration budget going in circles looked identical from outside to one that made progress.
+- Phase D built a room graph and exactly one thing could read it: the state block for the room the agent was standing in. No role could ask about anywhere else.
+- Everything learned died with the process. Restarting meant relearning that the pit fiend kills you.
+- `Boukensha::Permissions` had been built, tested, and left switched off since Phase A — no task had ever needed a restricted tool surface.
 
 ## Technical Goal
-
-Design an agentic loop capable of executing complex goals:
-
-- **Plan decomposition** — a goal becomes an objective, concrete steps, and
-  an observable stopping condition, before play begins.
-- **Refined memory and knowledge access** — the accumulated world model
-  becomes queryable by the roles that need it, and the character keeps a
-  memory of its own experience across sessions.
-- Do it by extending the Week 2 architecture (hooks, `Permissions`, the room
-  store) rather than porting a parallel one alongside it.
+- Design an agentic loop capable of executing complex goals: plan decomposition, refined memory and knowledge access.
+- Extend the Week 2 architecture (hooks, `Permissions`, the room store) rather than standing a parallel one up beside it.
+- Ship every new role off by default — a `settings.yaml` written before Week 3 must run byte-for-byte as it did.
 
 ## Technical Uncertainty
-
-- Would splitting one agent into several roles actually improve play, or just
-  multiply the cost of the same behaviour? Each extra role is a model call
-  per turn with nothing guaranteed in return.
-- Where does a plan have to live to survive a long session? Context
-  compaction drops the oldest 40% of history the moment the window fills.
-- Is an LLM subagent ever the right answer for navigation, when the room
-  graph already supports an exact shortest-path query? Phase C had already
-  deleted an LLM room-inspector in favour of a parser for that reason.
-- What actually belongs in cross-session memory, given a world-state database
-  already exists and answers a different question well?
+- Would splitting one agent into several roles improve play, or just multiply the cost of the same behaviour? Each extra role is a model call per turn with nothing guaranteed in return.
+- Where does a plan have to live to survive a long session, given compaction drops the oldest 40% of history the moment the window fills?
+- Is an LLM subagent ever right for navigation, when the room graph already supports an exact shortest-path query? Phase C had already deleted an LLM room-inspector in favour of a parser for that reason.
+- What belongs in cross-session memory, given `knowledge.sqlite3` already answers a different question well?
 
 ## Technical Hypothesis
-
-- An agent fails at complex goals mostly because nothing holds the goal
-  between turns — not because it reasons badly turn to turn. Give the goal
-  somewhere durable to live and much of the drift should stop.
-- A checkpoint is only worth its cost if it can *disagree*. A Judge that
-  never returns anything but `continue` is pure overhead.
-- Specialised roles with genuinely narrow tool surfaces will beat one
-  generalist, mostly because a narrow surface removes options rather than
-  adds capability.
-- Memory that is rewritten will stay useful; memory that is appended to will
-  grow until nothing can afford to read it.
+- An agent fails at complex goals mostly because nothing holds the goal between turns, not because it reasons badly turn to turn.
+- A checkpoint is only worth its cost if it can *disagree*. A Judge that never returns anything but `continue` is pure overhead.
+- Specialised roles with narrow tool surfaces beat one generalist — mostly because a narrow surface removes options rather than adds capability.
+- Memory that is rewritten stays useful; memory that is appended to grows until nothing can afford to read it.
 
 ## Technical Observations
+### 1. The plan had to live in the system prompt
+- `Context#compact_messages!` drops the oldest 40% of messages when the window fills — a plan delivered as a message is exactly what disappears mid-session.
+- `Context#effective_system` composes it on read, never stores it, so re-planning is a plain assignment that can't leave a stale copy behind.
+- `#system` aliased to the composed value, so all five backends picked it up with zero per-backend code — same trick `#messages` already used for the Phase D state block.
 
-### 1. The plan had to go in the system prompt
+> Test fills a context, compacts it, asserts the plan is still in the prompt. That's the guarantee, not the comment.
 
-`Context#compact_messages!` drops the oldest 40% of messages when the window
-fills, so a plan delivered as a message is precisely what disappears
-mid-session — leaving the agent playing on with no idea what it was for.
-Moving it into the system prompt (composed on read by
-`Context#effective_system`, never stored) made it uncompactable. Because
-every backend already calls `context.system`, all five picked it up with no
-per-backend code — the same trick `#messages` used for the Phase D state
-block.
+### 2. Subagents share the Player's MUD connection
+- `mud-manager --mcp` holds one telnet session with one logged-in character. A subagent spawning its own server is a second login *as the same character*.
+- `register_mcp_servers` return shape changed (`{name => count}` → `[{name:, client:, prefix:, count:}]`) so live clients survive; `subagent_context` builds a throwaway `Context` over them.
 
-> A test fills a context, compacts it, and asserts the plan survived. That is
-> the guarantee, not the comment.
+> Separate context, shared connection. The isolation that matters is history, not sockets.
 
-### 2. A subagent must share the Player's MUD connection
+### 3. Read-only meant Permissions, not a new mechanism
+- The reference design expresses the Judge's surface as `role: inspector` on each tool spec. This codebase's specs have no role concept.
+- Adding one meant a second gate beside Phase A's allowlist. Used `Tasks::Judge::READ_ONLY_TOOLS` fed through `Permissions` instead — one gate, enforced in `Registry#tool`/`#dispatch` like everything else.
+- Because `Permissions` filters at *registration*, a denied tool is never registered: dispatching `tbamud__move` as the Navigator raises `UnknownToolError`.
 
-`mud-manager --mcp` holds one telnet session with one logged-in character. A
-subagent spawning its own server would be a second login *as the same
-character* — not an isolated observer but a fight with itself over one
-connection. So `register_mcp_servers` returns live clients and
-`subagent_context` builds a throwaway Context over them: separate context,
-shared connection.
+> Phase A's engine finally has a real caller. Denied isn't refused — it's invisible.
 
-### 3. Read-only was already built, and had never been switched on
+### 4. A dead code path had rotted since Week 1
+- `Config::PROMPTS_DIR` was `../../../prompts` — one `..` too many, landing on the gem root's *parent*. `week2_observability/prompts`, `week1_baseline/ruby/prompts`: neither ever existed.
+- So the packaged `prompts/system.md` had never once been read, in any step, in either previous week.
+- Unnoticed because `.boukensha/settings.yaml` sets the player's `prompt_override.system: true` and supplies its own file, which wins.
+- Surfaced only because Planner and Judge have no override to be rescued by — they booted with a nil system prompt and no error.
 
-Phase A's `Permissions` engine had been complete, tested, and unused since
-Week 2. The Judge and Navigator are its first real callers. Expressing their
-surfaces as allowlists rather than inventing the reference's `role:` field
-meant one gate instead of two — and because `Permissions` filters at
-*registration*, a denied tool isn't merely refused, it never exists.
-Dispatching `tbamud__move` as the Navigator raises `UnknownToolError`.
+> A fallback every real caller bypasses can rot indefinitely without a test going red. Three regression tests now pin it.
 
-### 4. A dead code path had rotted for two weeks
+### 5. Knowledge became queryable instead of only injected
+- Added `Store#route_to` (BFS over `room_exits`), `#all_exits`, `#find_rooms_by_name`; surfaced as one `world_knowledge` tool with `kind=overview|room|route`.
+- Did **not** stand up a second MCP server the way the reference did — the store is already open in-process, so the loader hands the orchestrator the same `Store` instance `Mud::Hooks` writes through.
+- `route_to` walks only edges where `target_room_id IS NOT NULL`, which is exactly "edges actually walked". A frontier is shown, marked `(unexplored)`, but can never appear inside a route.
 
-`Config::PROMPTS_DIR` had one `..` too many and had never resolved to a real
-directory in any step since Week 1. The packaged `prompts/system.md` had
-never once been read. It went unnoticed because the live `settings.yaml`
-gives the player a `prompt_override`, so the fallback was never exercised.
-Phase G surfaced it only because Planner and Judge have no override to be
-rescued by — they booted with a nil system prompt and no error.
+> "Can I get there by a route I know?" is a different question from "does a path exist?", and only the first one is safe to plan on.
 
-> A fallback that every real caller bypasses can rot indefinitely without a
-> test going red. Worth looking for others.
+### 6. The Navigator had to justify existing — then never got called
+- `route_to` is already exact and deterministic. An LLM wrapping it is a slower, less reliable BFS unless it answers what BFS can't: a destination that isn't a room name, no route existing, or several rooms matching.
+- Wrote that into `consult_navigator`'s own description, so callers holding an exact room name are told to use the cheaper path.
+- Live: available to the Player for two full sessions, called **zero** times. Every destination was an adjacent room the state block already named.
 
-### 5. The Navigator had to justify existing
+> The tool description steered correctly — that's the design working, not the Player ignoring it. But it leaves the phase's justification an argument, not a finding. Two sessions produced none of the cases it exists for.
 
-Phase H's `route_to` is an exact BFS. An LLM wrapping it is a slower, less
-reliable BFS unless it answers something BFS structurally cannot: a
-destination that isn't a room name, "no route exists — now what?", or
-ambiguity between matching rooms. That is written into `consult_navigator`'s
-own description, so callers holding an exact room name are told to skip it.
+### 7. Memory is a different question from world state
+- `knowledge.sqlite3` answers "what is there?" — spatial, current, queryable. `PlayerMemory` answers "what have I learned?" — narrative, historical, prose.
+- `Tasks::Chronicler` gets **zero tools** by design: `world_knowledge` already answers the first question live and accurately, so a Chronicler with tools writes a staler second copy.
+- `<name>.jsonl` append-only history + `<name>.md` rewritten wholesale. Open-append-close everywhere — a held handle blocks deletion on Windows, the Phase B/D bug.
+- Memory reaches the Player *only* through the Planner. Its own prompt and context are untouched.
 
-### 6. Memory and world-state are different questions
+> The digest stays affordable to read every session because it is rewritten, not appended to. Forgetting is part of the job.
 
-`knowledge.sqlite3` answers "what is there?" — spatial, current, queryable.
-Cross-session memory answers "what have I learned?" — narrative, historical,
-prose. `Tasks::Chronicler` has zero tools specifically so it cannot drift
-into the first job: `world_knowledge` already answers that live and for free,
-and copying it into a digest only makes a staler second copy.
+### 8. Live run — the Judge disagreed
+Two sessions, real CircleMUD on `localhost:4000`, `claude-haiku-4-5`, character `dummy`.
 
-### 7. The live run: the Judge disagreed, and the Navigator was ignored
+- Session 2's second turn hit `max_iterations`; the Judge was invoked (a tripped limit is judged regardless of `every: 2`) and returned `replan`. Every `VERDICT:` line parsed — no spurious `:flag` from the fail-closed default.
+- Judge called `world_knowledge` unprompted, twice: `kind=overview`, then `kind=room` on the room the plan was about.
+- Map built during play: 4 rooms, 5 walked edges, 7 frontiers, with `x2`/`x3` revisit counts confirming Phase D's zero-round-trip known-room path still fires.
+- Memory crossed the process boundary — session 1's digest read back by session 2's Planner; Player's prompt had the plan, not the memory. Merged rather than appended across two rewrites (1039 → 1324 chars, `Strategies` went from `_nothing yet_` to real content).
+- Cost: **$0.09999** both sessions — player $0.078, judge $0.013, chronicler $0.007, planner $0.003. Orchestration ~22% of spend at `every: 2`.
 
-Two sessions, real MUD, `claude-haiku-4-5`, character `dummy`.
+> The checkpoint hypothesis survived its first real test. `kind=route` and the `:flag` verdict have still never fired in the wild.
 
-**The Judge disagreed.** Session 2's second turn hit `max_iterations`, the
-Judge was invoked (a tripped limit is judged regardless of `every: 2`), and
-returned `replan`. Every `VERDICT:` line parsed — no spurious `:flag` from
-the fail-closed default. It also called `world_knowledge` unprompted, twice,
-`kind=overview` then `kind=room`. The checkpoint hypothesis — that it is only
-worth its cost if it can disagree — survived its first real test.
+### 9. Two logging bugs, and the second was older than this week
+- `run_planner`/`run_chronicler` call `Client#call` directly, and `Logger#prompt` only fires inside `Agent#run` — so the two roles whose behaviour is entirely determined by their input were the two whose input never reached the log. Confirming the Planner got the memory digest needed a separate script.
+- Fixing that meant tagging prompts with `task:`, which put `mud_monitor`'s `when "prompt"` branch under scrutiny — and exposed the older one.
+- `Context#messages` appends the state block as a synthetic trailing **user** message, and `Mud::Hooks#before_model` sets it *before* `Logger#prompt` runs. So `messages.last` was the state block, and the viewer took `.last` as the turn's user entry.
+- Every hooked session since **Phase D** rendered `[here] Poor Alley…` where the human's instruction belonged. Nothing failed — it *is* a real message the model really received.
+- Fixed both: `synthetic_tail` on the prompt event, parser skips it, `[here]`-prefix fallback so existing logs render correctly too.
 
-**Memory crossed the process boundary.** A digest written at session 1's EOF
-was read back by session 2's Planner, and the Player's prompt contained the
-resulting plan but not the memory. It merged rather than appended across two
-rewrites: `Strategies` went from `_nothing yet_` to real content, the layout
-gained a room, the open threads were rewritten rather than restated.
+> A synthetic message indistinguishable in shape from a real one will eventually be treated as real — the fix was to stop making them indistinguishable, not to sharpen the guess. And every test asserted on data the parser produced; none asserted the data meant what it claimed.
 
-**The Navigator was never called.** `consult_navigator` was available to the
-Player for both sessions and invoked zero times. Not a bug: every destination
-was an adjacent room the state block already named, and the tool's own
-description tells callers holding an exact room name to use the cheaper path.
-It steered correctly — and in doing so left the phase with no evidence that
-it works or that this agent wants it.
-
-> A tool nobody calls is not automatically a failure, but it is not a
-> success either. The case for the Navigator was that BFS cannot answer vague
-> destinations; two sessions produced no vague destinations. Until one does,
-> that case is an argument, not a finding.
-
-**Cost:** $0.10 for both sessions — player $0.078, judge $0.013, chronicler
-$0.007, planner $0.003. Orchestration is ~22% of spend at `every: 2`.
-
-### 8. Two roles were invisible in the logs — and fixing it found a third bug
-
-`run_planner` and `run_chronicler` call `Client#call` directly instead of
-going through `Agent#run`, and `Logger#prompt` is only emitted inside
-`Agent#run`. Their responses were logged and costed correctly; what they were
-*given* was not recorded anywhere. Confirming the Planner had actually
-received the memory digest required a separate script.
-
-> The two roles whose entire behaviour is determined by their input were the
-> two whose input wasn't logged.
-
-Both now log their prompts, tagged with `task:` so a subagent's request is
-distinguishable from the turn's real user input. Which is what exposed the
-older bug underneath.
-
-### 9. A synthetic message will eventually be mistaken for a real one
-
-`Context#messages` appends the state block as a synthetic trailing **user**
-message, and `Mud::Hooks#before_model` sets it *before* `Logger#prompt` runs.
-So `messages.last` was the state block — and `mud_monitor`, taking `.last` as
-the turn's user entry, had been rendering `[here] Poor Alley…` where the
-human's instruction belonged. In every hooked session since Phase D. For two
-weeks.
-
-Nothing failed. The tests passed, the page rendered, the text looked
-plausible — it *is* a real message the model really received. It was only
-caught because the `task:` work put that parser branch under scrutiny, and
-because checking the live output meant reading a transcript closely enough to
-notice the first line was wrong.
-
-> Two lessons, and the second is the uncomfortable one. A synthetic message
-> that is indistinguishable in shape from a real one will eventually be
-> treated as real — the fix was to stop making them indistinguishable
-> (`synthetic_tail`), not to sharpen the guess. And a renderer nobody reads
-> carefully can be wrong for months without a single test going red: every
-> test asserted on data the parser produced, and none asserted that the data
-> meant what it claimed.
-
-**Still unknown:** whether the Chronicler over-forgets. Both rewrites here
-grew the digest and dropped nothing important, which is the easy case; the
-interesting one is a rewrite against a digest already at the character cap.
+**Scope note:** `Boukensha::Session.play` — the fully autonomous outer loop — was specified and not built. The plan offered it *or* a wrapper around the existing `Repl`, and the REPL wrapper shipped: a component whose whole job is deciding when to stop should keep a human in the loop on its first outing. Still open. So is whether the Chronicler over-forgets; both rewrites observed grew the digest and dropped nothing important, which is the easy case.
 
 ## Technical Conclusions
-
-- **Three of the four roles earn their place; one has not shown that it
-  does.** Planner, Judge and Chronicler all did something a single agent
-  could not: hold an objective across turns, disagree with progress, and
-  carry knowledge across a process boundary. The Navigator was available for
-  two full sessions and never invoked.
-- **The checkpoint hypothesis held.** A Judge that could only say `continue`
-  would have been pure overhead; it returned `replan` on its first real
-  opportunity, and it reached for `world_knowledge` to ground the judgement
-  rather than assessing from the transcript alone.
-- **Specialisation was mostly about removing options, not adding
-  capability.** The Judge's value came from a read-only surface; the
-  Navigator's from being unable to move; the Chronicler's from having no
-  tools at all. In every case the constraint, not the capability, is what
-  made the role trustworthy — and `Permissions`, built in Week 2 and never
-  switched on, turned out to be the mechanism the whole week rested on.
-- **Orchestration cost ~22% of spend** at `every: 2` and bought plan
-  persistence, one course correction, and durable memory. That is a
-  defensible ratio, and it is measurable per-role only because the `task:`
-  field was threaded through the logger.
-- **Reuse beat porting.** Phase D's room store, Phase A's permissions engine,
-  and Phase C's `RunDSL#dispatch` seam carried all four phases. The one
-  genuinely new thing was cross-session memory — the only gap Week 2's
-  architecture had actually left open.
-
-**What still isn't measured:** whether an orchestrated agent *plays better* —
-survives longer, achieves more — than a single one. Two short sessions show
-the machinery works, not that it wins. That needs a longer run with a goal
-hard enough to fail at.
+- Three of four roles earned their place — Planner, Judge, Chronicler each did something one agent couldn't. The Navigator was offered twice and never invoked.
+- Specialisation was about removing options, not adding capability: read-only Judge, immobile Navigator, toolless Chronicler. The constraint is what made each trustworthy.
+- `Permissions` — built Week 2, never switched on — turned out to be what the whole week rested on. Three of four roles are defined by their allowlist.
+- Where a thing survives mattered more than what it does: plan in the system prompt, state block never stored, digest rewritten not appended, subagent context never touching its caller's.
+- Orchestration cost ~22% of spend for plan persistence, one course correction, and durable memory — and was only measurable per-role because `task:` got threaded through the logger.
+- Reuse beat porting: Phase D's store, Phase A's permissions, Phase C's `RunDSL#dispatch` carried all four phases. Cross-session memory was the only genuinely new thing.
+- Two short sessions show the machinery works, not that it wins. Whether an orchestrated agent *plays better* is still unmeasured.
 
 ## Key Takeaway
-
-**A plan is only as good as the place you put it.** The most consequential
-decision of the week was not adding a Planner — it was noticing that a plan
-stored as a message gets silently deleted by the compactor, and that the
-system prompt is the only part of the context nothing evicts. The same shape
-recurred three more times: the state block that must not accumulate, the
-digest that must be rewritten rather than appended, the subagent context that
-must not touch its caller's. In each case the design question was not "what
-should this component do?" but "where does this survive, and what deletes
-it?"
-
-The live run added a second, less comfortable one. **Building a capability is
-not the same as needing it.** The Navigator is the best-argued component of
-the week — bounded, isolated, permission-gated, justified in writing against
-a deterministic alternative — and the agent never once asked it anything. The
-argument was sound and the thing may still be unnecessary. Two sessions is
-not enough to conclude that, which is exactly why it is written down as an
-open question rather than a feature.
+- **A plan is only as good as the place you put it.** The most consequential decision of the week wasn't adding a Planner — it was noticing that a plan stored as a message gets silently deleted by the compactor, and that the system prompt is the only part of the context nothing evicts.
+- **Building a capability is not the same as needing it.** The Navigator is the best-argued component of the week — bounded, isolated, permission-gated, justified in writing against a deterministic alternative — and the agent never once asked it anything. The argument was sound and the thing may still be unnecessary.
+- **A checkpoint is only worth its cost if it can disagree.** The Judge returned `replan` on its first real opportunity. Had it only ever said `continue`, ~13% of spend would have bought nothing.
+- **Constraints, not capabilities, made the roles trustworthy.** Every role that worked was defined by what it couldn't do, and the gate enforcing that had been sitting unused since Week 2.
+- **A wrong renderer can be right-looking for months.** The state block rendered as user input since Phase D, through every test suite, because the data was real — just not what it was labelled. Tests asserted the parser's output, never its meaning.
