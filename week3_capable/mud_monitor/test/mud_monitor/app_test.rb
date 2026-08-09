@@ -133,6 +133,20 @@ module MudMonitor
       assert_includes last_response.body, "north, east - 2 steps."
     end
 
+    # Phase J — the Chronicler's digest rewrites show in the transcript too.
+    def test_session_detail_renders_chronicler_writes
+      write_session("2026-07-31-aaa", at: "2026-07-31T00:00:00Z", extra_lines: [
+        { "phase" => "orchestrator", "role" => "chronicler", "event" => "written",
+          "detail" => "exit", "text" => "## Discoveries\nThe temple is north." }.to_json
+      ])
+
+      get "/sessions/2026-07-31-aaa"
+
+      assert_equal 200, last_response.status
+      assert_includes last_response.body, "task-chronicler"
+      assert_includes last_response.body, "The temple is north."
+    end
+
     def test_session_detail_has_no_trace_link_when_tracing_was_off
       write_session("2026-07-31-aaa", at: "2026-07-31T00:00:00Z")
 

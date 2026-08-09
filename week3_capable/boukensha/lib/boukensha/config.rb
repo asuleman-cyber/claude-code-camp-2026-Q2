@@ -90,6 +90,30 @@ module Boukensha
       end
     end
 
+    # ---------- cross-session memory (Phase J) -----------------------------
+    # Off by default — same "ship real, switch on deliberately" posture as
+    # the compactor and Phase A's `allow:` engine:
+    #
+    #   memory:
+    #     enabled: true
+
+    def memory_enabled?
+      env_boolean("BOUKENSHA_MEMORY_ENABLED", dig(:memory, :enabled), false)
+    end
+
+    # Which character the memory belongs to.
+    #
+    # Read from the `mud` MCP server's own `MUD_NAME` env entry — the same
+    # value the daemon logs in with — rather than a separate setting, so the
+    # memory file and the character on screen cannot drift apart. An explicit
+    # `memory.character` wins if someone needs to override it.
+    def character_name
+      explicit = dig(:memory, :character)
+      return explicit.to_s if explicit && !explicit.to_s.strip.empty?
+
+      mcp_servers.dig("mud", :env, "MUD_NAME")
+    end
+
     # ---------- agent limits ----------------------------------------------
     # Static per-turn circuit breakers, read where the agent is constructed.
     # A value of 0 or nil means "disabled" (no ceiling) — useful for debugging.

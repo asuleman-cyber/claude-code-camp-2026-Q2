@@ -94,6 +94,7 @@ module Boukensha
     def handle_command(input)
       case input
       when "/exit", "/quit"
+        flush_memory("exit")
         output("Goodbye.")
         :quit
       when "/help"
@@ -108,6 +109,10 @@ module Boukensha
         output("(logging enabled)")
         :command
       when "/clear"
+        # Chronicle BEFORE wiping: /clear destroys the transcript the
+        # Chronicler distils from, so flushing afterwards would faithfully
+        # record an empty session over a real one.
+        flush_memory("clear")
         @context.clear_messages!
         # The plan goes with the history it was written for. Keeping it would
         # leave the agent working to a plan whose whole rationale — the
@@ -151,6 +156,9 @@ module Boukensha
 
       output("")
       output(result)
+      # Something happened that the digest doesn't reflect yet — the next
+      # boundary should chronicle rather than skip as a no-op.
+      @orchestrator&.note_activity!
       judge_if_due(agent.stop_reason)
     rescue LoopError => e
       output("\n[error] #{e.message}")
@@ -174,7 +182,10 @@ module Boukensha
         end
 
         input = $stdin.gets
-        break unless input  # EOF / Ctrl-D
+        if input.nil? # EOF / Ctrl-D
+          flush_memory("eof")
+          break
+        end
 
         input = input.chomp.strip
         next if input.empty?
@@ -220,6 +231,19 @@ module Boukensha
       when :flag
         output("\n[judge] flag — this needs a look. #{@orchestrator.verdict_text}".rstrip)
       end
+    end
+
+    # Redistil this character's cross-session memory at a session boundary.
+    # A no-op when memory is off, or when nothing has happened since the last
+    # flush. Never raises into the caller — these are exit paths, and failing
+    # to save memory must not stop the REPL from closing.
+    def flush_memory(reason)
+      return unless @orchestrator&.memory_enabled?
+
+      digest = @orchestrator.flush_memory!(context: @context, reason: reason)
+      output("\n[chronicler] memory updated for #{@orchestrator.memory.name}.") if digest
+    rescue StandardError => e
+      @error_log&.record(e, context: "Repl#flush_memory")
     end
 
     def output(str)

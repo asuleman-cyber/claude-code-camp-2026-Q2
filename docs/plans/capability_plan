@@ -1,10 +1,14 @@
 # Week 3 "Capable" — plan
 
-> **TODO (post-Phase J):** once orchestrator/knowledge/navigator/memory are
-> all built and verified, remove the "What htnguyen901 built" table below and
+> **TODO (still open):** remove the "What htnguyen901 built" table below and
 > every named reference to their repo — rewrite the Context section to
-> describe this repo's own design in its own terms. Keep the references
-> until then; they're the rationale for the choices made while building.
+> describe this repo's own design in its own terms.
+>
+> **Not yet actionable.** The condition was "built *and verified*". As of
+> Phases G–J all four are built and tested, but **none has been verified live
+> against a real model** — the prompts are untested drafts. Do this once a
+> live run has confirmed the design actually holds, since a phase that turns
+> out to need rethinking will want the reference rationale still here.
 
 ## Context
 
@@ -189,7 +193,24 @@ Original plan:
   from the caller's context (only one tool_call/result pair leaks back).
   Registered on Player, Judge, and Planner's registries.
 
-### Phase J — Cross-session character memory
+### Phase J — Cross-session character memory — **BUILT** (not yet verified live)
+
+Write-up: [`capability/week3_phase_j_memory.md`](capability/week3_phase_j_memory.md).
+Tests: `boukensha` 263/746, `mud_manager` 41/217, `mud_monitor` 73/259, green.
+
+Built as planned, including the open-append-close discipline the plan called
+out. Additions the plan didn't specify:
+
+- **`note_activity!`** — a flush with no new play since the last one is a
+  no-op, so a `:flag` verdict followed by `/exit` doesn't pay for two
+  Chronicler calls over the same events.
+- **`/clear` chronicles *before* wiping** — flushing after would faithfully
+  record an empty session over a real one.
+- **Character name from `mcp_servers.mud.env.MUD_NAME`** (overridable via
+  `memory.character`), whitelisted to `[A-Za-z0-9_-]` since it becomes a
+  filename.
+
+Original plan:
 
 Closest to a clean port since nothing overlapping exists yet:
 

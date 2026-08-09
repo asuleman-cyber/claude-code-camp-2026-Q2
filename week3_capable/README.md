@@ -192,7 +192,58 @@ tasks:
 **Tests:** `boukensha` 225 runs / 651 assertions, `mud_manager` 41 / 217,
 `mud_monitor` 72 / 254 — all green.
 
-## Phase J
+## Phase J — cross-session character memory (built; not yet verified live)
 
-Not started. See [`docs/plans/capability_plan`](../docs/plans/capability_plan):
-cross-session character memory.
+Full write-up:
+[`docs/plans/capability/week3_phase_j_memory.md`](../docs/plans/capability/week3_phase_j_memory.md).
+
+Everything the agent knew died with the process. `knowledge.sqlite3` kept
+where the *rooms* are, but not that a pit fiend killed this character at
+level 3, or what it was halfway through when the session ended.
+
+- **`PlayerMemory`** (`boukensha/lib/boukensha/player_memory.rb`) — two files
+  per character under `<config>/memory/`: `<name>.jsonl` (append-only
+  history, never rewritten) and `<name>.md` (a bounded prose digest,
+  rewritten wholesale). The digest stays affordable to read every session
+  *because* it's rewritten rather than appended to.
+- **`Tasks::Chronicler`** — **zero tools, by design.** `world_knowledge`
+  already answers "what is there?" live; copying that into prose just makes a
+  staler second copy. What belongs here is what no tool can answer — what was
+  tried, what it cost, what to do differently. Writes under four fixed
+  headings: Discoveries / Mistakes / Strategies / Open threads.
+
+Two things worth knowing:
+
+1. **Memory reaches the Player only through the Planner.** It goes into
+   `run_planner`, becomes a plan, and arrives exactly the way Phase G already
+   delivered plans. That costs one call's tokens at a decision point instead
+   of riding on every iteration of every turn, and leaves the already-tested
+   Player path untouched. A test asserts the digest never appears in the
+   Player's context or prompt.
+
+2. **Every write is open-append-close** — a documented Windows bug in this
+   project (Phase B's logger, caught in Phase D), where a held handle blocks
+   another process from deleting the file. A test removes the tmpdir
+   afterwards and fails if that regresses.
+
+Flushes at `/clear` (before wiping, so it doesn't record an empty session
+over a real one), `/exit`, EOF, and any Judge verdict that isn't `continue` —
+so a session killed mid-play still leaves memory behind. Repeated boundaries
+don't pay twice.
+
+```yaml
+memory:
+  enabled: true
+  # character: Gandalf   # defaults to mcp_servers.mud.env.MUD_NAME
+```
+
+**Tests:** `boukensha` 263 runs / 746 assertions, `mud_manager` 41 / 217,
+`mud_monitor` 73 / 259 — all green.
+
+## Status
+
+Phases G–J are all built and tested; **none has been verified live against a
+real model yet.** The plumbing is proven offline against real MCP servers,
+real SQLite, and real permissions — the prompts are untested drafts. See each
+phase's "Not yet done" section; the autonomous `Session.play` loop from
+Phase G also remains open.

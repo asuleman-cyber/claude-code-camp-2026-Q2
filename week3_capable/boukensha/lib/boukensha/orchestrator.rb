@@ -1,6 +1,8 @@
 require_relative "tasks/planner"
 require_relative "tasks/judge"
 require_relative "tasks/navigator"
+require_relative "tasks/chronicler"
+require_relative "player_memory"
 
 module Boukensha
   # Orchestrator wraps the Player turn loop with the two other model roles:
@@ -41,11 +43,13 @@ module Boukensha
       planner   = Tasks::Planner.enabled?(cfg.tasks(Tasks::Planner.task_name))
       judge     = Tasks::Judge.enabled?(cfg.tasks(Tasks::Judge.task_name))
       navigator = Tasks::Navigator.enabled?(cfg.tasks(Tasks::Navigator.task_name))
-      return nil unless planner || judge || navigator
+      memory    = PlayerMemory.build(config: cfg, name: cfg.character_name,
+                                     enabled: cfg.memory_enabled?)
+      return nil unless planner || judge || navigator || memory
 
       new(cfg: cfg, servers: servers, logger: logger, ollama_host: ollama_host,
           planner_enabled: planner, judge_enabled: judge, navigator_enabled: navigator,
-          knowledge_store: knowledge_store)
+          knowledge_store: knowledge_store, memory: memory)
     end
 
     # knowledge_store: an open Mud::Memory::Store, or nil. nil is ordinary,
@@ -54,7 +58,7 @@ module Boukensha
     # world_knowledge tool, the same way the Player runs without memory.
     def initialize(cfg:, servers:, logger:, ollama_host: "http://localhost:11434",
                    planner_enabled: false, judge_enabled: false, navigator_enabled: false,
-                   knowledge_store: nil)
+                   knowledge_store: nil, memory: nil)
       @cfg             = cfg
       @servers         = servers
       @logger          = logger
@@ -63,10 +67,16 @@ module Boukensha
       @judge_enabled   = judge_enabled
       @navigator_enabled = navigator_enabled
       @knowledge_store = knowledge_store
+      @memory          = memory
       @plan            = nil
       @verdict         = nil
       @turns_since_judge = 0
+      @unchronicled      = false
     end
+
+    attr_reader :memory
+
+    def memory_enabled? = !@memory.nil?
 
     # Native tools every subagent gets, as Registry-taking callables.
     #
@@ -156,7 +166,7 @@ module Boukensha
     def plan!(goal:, context:)
       return nil unless @planner_enabled
 
-      text = run_planner(goal: goal)
+      text = run_planner(goal: goal, player_memory: @memory&.digest)
       return nil if text.nil? || text.strip.empty?
 
       @plan = text.strip
@@ -197,6 +207,13 @@ module Boukensha
       @verdict_text = strip_verdict_line(text)
       @verdict      = Tasks::Judge.parse_verdict(text)
       @logger.orchestrator(role: "judge", event: "verdict", detail: @verdict.to_s, text: text)
+
+      # A verdict that isn't "carry on" is a natural seam in the session —
+      # something concluded, or went wrong, and that is exactly the moment
+      # worth remembering. Flushing here rather than only at exit means a
+      # session killed mid-play still leaves memory behind.
+      flush_memory!(context: context, reason: "verdict:#{@verdict}") if @verdict != :continue
+
       @verdict
     rescue StandardError => e
       @logger.orchestrator(role: "judge", event: "error", detail: "#{e.class}: #{e.message}")
@@ -204,7 +221,78 @@ module Boukensha
       @verdict      = :flag
     end
 
+    # Mark that play has happened which the digest doesn't yet reflect. The
+    # Repl calls this each turn; #flush_memory! consults it so that repeated
+    # boundaries (a :flag verdict, then /exit moments later) don't each pay
+    # for a Chronicler call over the same, already-recorded play.
+    def note_activity!
+      @unchronicled = true if @memory
+    end
+
+    # Redistil the digest from the session so far. Returns the new digest, or
+    # nil if there was nothing to do.
+    #
+    # reason: what triggered it — a verdict, /clear, /exit, EOF. Recorded on
+    # the raw record so the jsonl says why each rewrite happened.
+    def flush_memory!(context:, reason:)
+      return nil unless @memory
+      return nil unless @unchronicled
+
+      @unchronicled = false
+      @logger.orchestrator(role: "chronicler", event: "start", detail: reason)
+
+      digest = run_chronicler(context: context)
+      if digest.nil? || digest.strip.empty?
+        @logger.orchestrator(role: "chronicler", event: "empty", detail: reason)
+        return nil
+      end
+
+      @memory.record(kind: "session", reason: reason, session_id: @logger.session_id)
+      @memory.write_digest(digest)
+      @logger.orchestrator(role: "chronicler", event: "written", detail: reason, text: digest)
+      digest
+    rescue StandardError => e
+      # Losing a session's memory is bad; crashing the exit path that was
+      # trying to save it is worse.
+      @logger.orchestrator(role: "chronicler", event: "error", detail: "#{e.class}: #{e.message}")
+      nil
+    end
+
     private
+
+    # One toolless model call — see Tasks::Chronicler on why zero tools.
+    def run_chronicler(context:)
+      settings, system, model, backend = Boukensha.task_setup(Tasks::Chronicler, @cfg)
+      ctx = Context.new(system: system, context_window: Models.context_window(model))
+      ctx.add_message(:user, chronicler_brief(context: context))
+
+      be      = Boukensha.build_backend(backend, model: model,
+                                        api_key: Boukensha.api_key_for(backend), ollama_host: @ollama_host)
+      builder = PromptBuilder.new(ctx, be)
+
+      response = Client.new(builder).call(
+        tools: [], max_output_tokens: Tasks::Chronicler.max_output_tokens(settings)
+      )
+      parsed = builder.parse_response(response)
+      text   = parsed[:content].select { |b| b["type"] == "text" }.map { |b| b["text"] }.join("\n")
+      @logger.response(text: text, usage: response["usage"], stop_reason: parsed[:stop_reason],
+                       task: Tasks::Chronicler, backend: be)
+      text
+    end
+
+    def chronicler_brief(context:)
+      existing = @memory&.digest
+      parts    = []
+      parts << if existing
+                 "The memory as it currently stands:\n\n#{existing}"
+               else
+                 "This character has no memory yet — you are writing the first digest."
+               end
+      parts << "The plan this session was working to:\n\n#{@plan}" if @plan
+      parts << "What happened this session (oldest first):\n\n#{render_transcript(context)}"
+      parts << "Rewrite the memory to account for all of it."
+      parts.join("\n\n")
+    end
 
     # The Judge's reasoning without the machine-readable verdict line — that
     # part is already reported as the verdict itself, and repeating it back at
@@ -221,10 +309,18 @@ module Boukensha
     # One toolless model call. Not an Agent#run: with no tools there is
     # nothing to iterate over, and a loop would only add the possibility of
     # spending more than one call's worth of tokens on a paragraph of prose.
-    def run_planner(goal:)
+    # player_memory: the character's digest, or nil.
+    #
+    # This is the ONLY path memory takes to the Player. The Player's own
+    # prompt and context are untouched by Phase J — it plays from the plan it
+    # is given, exactly as it did before. Routing memory through planning
+    # rather than into the playing context means it costs one call's tokens
+    # at a decision point, instead of riding on every iteration of every turn
+    # forever; and it keeps the already-tested Player path stable.
+    def run_planner(goal:, player_memory: nil)
       settings, system, model, backend = Boukensha.task_setup(Tasks::Planner, @cfg)
       ctx = Context.new(system: system, context_window: Models.context_window(model))
-      ctx.add_message(:user, goal.to_s)
+      ctx.add_message(:user, planner_brief(goal: goal, player_memory: player_memory))
 
       be      = Boukensha.build_backend(backend, model: model,
                                api_key: Boukensha.api_key_for(backend), ollama_host: @ollama_host)
@@ -302,6 +398,12 @@ module Boukensha
         max_output_tokens: Tasks::Navigator.max_output_tokens(settings),
         task: Tasks::Navigator
       ).run
+    end
+
+    def planner_brief(goal:, player_memory:)
+      return goal.to_s if player_memory.nil? || player_memory.strip.empty?
+
+      "What this character remembers from previous sessions:\n\n#{player_memory.strip}\n\n---\n\nThe goal for this session:\n\n#{goal}"
     end
 
     def navigator_brief(to:, from:)

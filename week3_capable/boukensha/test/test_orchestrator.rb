@@ -250,7 +250,7 @@ class TestOrchestrator < Minitest::Test
     ctx  = Boukensha::Context.new(system: "base")
 
     # No API key / no network: run_planner will raise inside plan!.
-    def orch.run_planner(goal:) = raise(Boukensha::ApiError, "boom")
+    def orch.run_planner(goal:, player_memory: nil) = raise(Boukensha::ApiError, "boom")
 
     assert_nil orch.plan!(goal: "explore", context: ctx)
     assert_nil ctx.plan
@@ -269,7 +269,7 @@ class TestOrchestrator < Minitest::Test
   def test_a_successful_plan_is_installed_on_the_context
     orch = build_orchestrator(planner_enabled: true)
     ctx  = Boukensha::Context.new(system: "base")
-    def orch.run_planner(goal:) = "1. go north\n2. look"
+    def orch.run_planner(goal:, player_memory: nil) = "1. go north\n2. look"
 
     assert_equal "1. go north\n2. look", orch.plan!(goal: "explore", context: ctx)
     assert_includes ctx.system, "1. go north"

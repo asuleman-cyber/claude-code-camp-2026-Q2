@@ -641,6 +641,10 @@ table.sessions th a:hover {
   border-left: 4px solid #6b46c1;   /* violet — working out how to get there */
 }
 
+.task-chronicler {
+  border-left: 4px solid #718096;   /* slate — writing down what it all meant */
+}
+
 /* A flag is the one verdict that wants a human, so it gets to shout. */
 .msg-orchestrator.verdict-flag {
   background: #fdf2f2;
