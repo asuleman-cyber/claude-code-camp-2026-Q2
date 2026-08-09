@@ -1,0 +1,184 @@
+# Week 3 "Capable" — plan
+
+## Context
+
+`week3_capable` in the classmate's repo
+(`claude-code-camp-2026-Q2-htnguyen901`) is that student's answer to the
+camp's Week 3 assignment, whose rubric already sits, unfilled, in **this**
+repo at `docs/journal/3_capable.md`:
+
+> Design the Agentic Loop that is capable of executing complex goals — plan
+> decomposition, refined memory/knowledge access, (optional) playstyle/risk
+> mode.
+
+This repo has done Week 0 (`week0_explore`), Week 1 (`week1_baseline`, steps
+`00_config`…`12_context`), and Week 2 (`week2_observability`, Phases A–F:
+navigation debugging, the `mud_monitor` log viewer, deterministic room
+survey, and — importantly — **automatic room memory already exists**:
+`Mud::Hooks` injects a `[here]...` state block every turn from a
+SQLite-backed room graph
+(`boukensha/lib/boukensha/mud/memory/{schema,store}.rb`), with a `/knowledge`
++ `/knowledge/map` viewer in `mud_monitor`. This repo's own `ITERATIONS.md`
+roadmap explicitly flags what's *not* built yet: **"An orchestrator layer...
+no orchestrator, turn-counter wrapper, or memory-store code exists"** (the
+memory-store note is now stale — Phase D built that — but **no orchestrator
+exists**, and no *cross-session* character memory exists either).
+
+**Goal of this plan:** reach the same "capable" milestone
+(orchestration/planning, richer knowledge access, navigation, memory) — but
+by *extending* the existing Phase A–F architecture, not by porting
+htnguyen901's files. Where this repo already solved a piece (room memory,
+room graph, permissions engine), reuse it; where it's a true gap
+(orchestrator, cross-session memory), build it fresh, informed by how the
+reference did it.
+
+## What htnguyen901 built (for reference, not for copying)
+
+| Step | Capability | Core mechanism |
+|---|---|---|
+| `18_orchestrator` | Planner sets a plan, Player runs, Judge checkpoints | `Tasks::Planner`/`Tasks::Judge`, `Context#plan` injected into system prompt, verdict `continue/replan/flag` drives a `Session.play` outer loop |
+| `19_knowledge` | World knowledge queryable, not just injected | Moved room/route knowledge into a separate `log_viz --mcp` server (`world__room_knowledge`, `world__route_to` — BFS over an edges table) |
+| `20_navigator` | Dedicated path-finding subagent | `Tasks::Navigator`, read-only, bounded, isolated context; exposed to Player/Judge/Planner as a native `consult_navigator` tool |
+| `21_memory` | Cross-session character memory | `PlayerMemory` (jsonl + prose digest), `Tasks::Chronicler` (zero tools), reaches the Player only via the Planner's prompt |
+
+Their `Tasks::*` all subclass a `Tasks::Base` that reads `provider`/`model`/
+`prompt_override`/`max_iterations` per task name out of `settings.yaml`'s
+`tasks:` block — **this repo already has this exact pattern**
+(`boukensha/lib/boukensha/tasks/base.rb`, `tasks/player.rb`), so adding
+`Tasks::Planner`/`Tasks::Judge`/`Tasks::Navigator`/`Tasks::Chronicler` is a
+drop-in, not new plumbing.
+
+## Gap analysis against this repo
+
+| Capability | Here today | Verdict |
+|---|---|---|
+| Room/world memory | **Have it.** `Mud::Memory::Store` (SQLite: rooms, room_exits, entities, entity_sightings, player_state), `Mud::Hooks` auto-injects state, zero LLM calls on known rooms, `/knowledge` + `/knowledge/map` UI. | Reuse as-is. Do not rebuild. |
+| Navigation data | **Have the graph.** `room_exits` table, `KnowledgeStore#all_exits` (mud_monitor read side). | Reuse the schema; add a query path + a subagent on top. |
+| Query access to knowledge (for tasks other than Player) | **Missing.** Knowledge only ever reaches the Player, only as an auto-injected block — nothing can *ask* "what's at room X" or "is there a path A→B" on demand. | Build (small — a thin read API over the existing `Store`). |
+| Orchestrator (Planner/Judge, plan decomposition, verdict loop) | **Missing entirely** — confirmed by this repo's own `ITERATIONS.md`. | Build (the headline piece). |
+| Navigator subagent | **Missing** — the data exists, not a bounded subagent or a `consult_navigator` tool. | Build (thin — mostly wiring over existing data). |
+| Cross-session character memory (discoveries/mistakes/strategies across runs) | **Missing.** Existing memory is spatial/world state, not narrative digest across sessions. | Build fresh — genuinely new, closest 1:1 to the reference design. |
+| Per-task tool permissions | **Have it, unused.** `Boukensha::Permissions` (Phase A) is built, tested, and off. Judge/Navigator are the first tasks that actually *need* a restricted, read-only tool surface. | Turn on for the new tasks — this is the natural moment. |
+
+## Recommended approach
+
+Fork `week2_observability/{boukensha,mud_manager,mud_monitor}` into
+`week3_capable/` exactly the way `week2_observability` forked its two
+sources (see `week2_observability/README.md`'s "Setup" section) — sibling
+gems, cross-package paths repointed, nothing in `week2_observability`
+touched. Continue the existing "Phase" lettering (A–F already used) into
+**Phases G–J**, one per capability, each with its own
+`docs/plans/capability/week3_phase_*.md` write-up (mirroring
+`docs/plans/observability/week2_phase_*.md`) plus this file as the rollup
+(mirroring `week2_catchup_plan.md`).
+
+### Phase G — Orchestrator: Planner + Judge
+
+- `Tasks::Planner < Tasks::Base` (`task_name = "planner"`, no tools) and
+  `Tasks::Judge < Tasks::Base` (`task_name = "judge"`, read-only tools only)
+  — same shape as the existing `Tasks::Player`.
+- `Context#plan` + `Context#effective_system` — plan text folded into the
+  system prompt so it survives `Context#compact_messages!` (Step 12's
+  compactor already exists; this just needs to not evict the plan).
+- `Boukensha.run_planner` — one bare model call, no loop.
+- `Boukensha.run_judge` — a small `Agent#run` with its own throwaway
+  `Context`/`Registry`, filtered to `role: inspector` tools (reuse
+  `Boukensha::Permissions`, Phase A — this is exactly the restricted-surface
+  use case it was built for and never turned on). Parses a trailing
+  `VERDICT: continue|replan|flag` line, defaults to `:flag` if unparseable.
+- A new outer loop (`Boukensha::Session.play` or an equivalent wrapper
+  around the existing `Repl`) drives Planner → Player turns → Judge,
+  `max_turns` as an outer backstop. Off by default via
+  `tasks.planner.enabled` / `tasks.judge.enabled` in `settings.yaml` (same
+  "ship real, opt-in" posture as the Step-12 compactor and Phase A's
+  `allow:` engine), flipped on once verified.
+- `mud_monitor`'s session transcript (`views/session.erb`) gets per-task
+  color coding (Planner/Judge/Player) — additive, same file the trace-link
+  work (Phase 3) already extended.
+
+### Phase H — Knowledge as a query API (not a new store)
+
+Do **not** stand up a second process/MCP server the way the reference did
+(`log_viz --mcp`) — room memory already lives in-process inside `boukensha`
+via `Mud::Memory::Store`, so a network/stdio hop would be pure overhead
+here. Instead:
+
+- Add a handful of read-only methods to `Store` (e.g. `all_exits` — the
+  batch version `mud_monitor`'s `KnowledgeStore` already proved out for the
+  map view, per `docs/plans/observability/week2_phase_d_agent_memory.md`'s
+  "Knowledge map" note — port that same batch-query idea into the
+  agent-facing `Store`, not just the monitor's read replica) and a
+  `route_to(from_id, to_id)` BFS over `room_exits`, scoped to rooms already
+  visited (mirrors the reference's own scoping choice).
+- Wrap these as one native, read-only tool (register via `RunDSL#tool`,
+  dispatch via `RunDSL#dispatch` — the same seam `inspect_room` and
+  `Mud::Hooks` already use) available only to Judge/Navigator/Planner's
+  registries, gated by `Permissions` — the Player keeps its existing
+  zero-tool-call auto-injected state block unchanged.
+
+### Phase I — Navigator subagent
+
+- `Tasks::Navigator < Tasks::Base` (`task_name = "navigator"`, read-only,
+  `max_iterations` small, e.g. 4) — denied `move`/`attack` via `allow:`
+  (Phase A engine, again the natural first real use).
+- `consult_navigator(from:, to:)` — a native tool following the exact
+  `RunDSL#tool` + `#dispatch` pattern `inspect_room` pioneered, runs its own
+  throwaway `Context`/`Registry` against the Phase H query tool, isolated
+  from the caller's context (only one tool_call/result pair leaks back).
+  Registered on Player, Judge, and Planner's registries.
+
+### Phase J — Cross-session character memory
+
+Closest to a clean port since nothing overlapping exists yet:
+
+- `Boukensha::PlayerMemory` — `.boukensha/memory/<name>.jsonl` append-only
+  raw records + `<name>.md` bounded prose digest. Use the **open-append-close**
+  pattern everywhere (never hold a file handle open) — this is a documented
+  real bug from Phase D/B on this exact codebase (Windows can't clean up a
+  handle another process holds open).
+- `Tasks::Chronicler < Tasks::Base` (`task_name = "chronicler"`, zero tools
+  by design). `Boukensha.run_chronicler` rewrites the digest under fixed
+  headers (Discoveries / Mistakes / Strategies / Open threads).
+- Memory reaches the Player **only through the Planner** (a
+  `player_memory:` kwarg on `run_planner`) — the Player's own prompt stays
+  untouched, keeping the existing, already-tested Player path stable.
+- Flush points: every Judge `:replan`/`:flag` verdict, plus `/clear`,
+  `/exit`, and EOF in the `Repl` (same boundaries the compactor and
+  telemetry already care about). `memory.enabled: false` by default.
+
+### Settings & permissions
+
+- `settings.yaml` gains `tasks: planner:`, `tasks: judge:`, `tasks:
+  navigator:`, `tasks: chronicler:` blocks (provider/model per task, same
+  shape as the existing `tasks: player:`).
+- This is the moment to **turn on `Boukensha::Permissions`** (`allow:`) for
+  the new tasks — it's already built and tested (Phase A) but not wired
+  into the live profile; Judge/Navigator need it for real, not as a demo.
+
+### Docs to produce alongside the code
+
+- `docs/journal/3_capable.md` — fill in Goal/Uncertainty/Hypothesis/
+  Observations/Conclusions/Key Takeaway, same structure as
+  `docs/journal/2_observability.md`.
+- `docs/plans/capability/week3_phase_{g_orchestrator,h_knowledge,
+  i_navigator,j_memory}.md` — one per phase, mirroring
+  `docs/plans/observability/week2_phase_*.md`'s format (what got built /
+  verified live / deliberate simplifications / try yourself).
+- `week3_capable/README.md` — Setup/fork provenance section (like
+  `week2_observability/README.md`'s opening), then one section per phase.
+
+## Verification
+
+- `rake test` in each of `week3_capable/{boukensha,mud_manager,mud_monitor}`
+  — must stay green throughout; each phase is additive (new hook/task
+  classes), so existing Step-12/Phase-A–F tests should be unaffected, same
+  discipline as every prior phase.
+- Verify **live against the real CircleMUD**, not just fixtures, for at
+  least: one full Planner→Player→Judge turn with a `:replan` verdict firing,
+  one `consult_navigator` call returning a real route between two visited
+  rooms, and one Chronicler digest write/read across two separate sessions
+  for the same character — the project's own established bar ("verified
+  live" call-outs in every prior phase doc).
+- Confirm the new tasks' tool surfaces are actually restricted (Judge/
+  Navigator cannot call `move`/`attack`) by attempting a denied call and
+  checking `Permissions::InvalidRuleError`/dispatch rejection fires.
