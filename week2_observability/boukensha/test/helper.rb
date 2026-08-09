@@ -6,7 +6,7 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "boukensha"
 
 # The MCP tests need a real MCP server to spawn. The mud-manager daemon that
-# ships alongside this gem (a sibling under week2_capable/) is the one we
+# ships alongside this gem (a sibling under week2_observability/) is the one we
 # have, so it plays the role of "some MCP server" — the code under test
 # knows nothing about it beyond command/args/env.
 MUD_MANAGER_ROOT = File.expand_path("../../mud_manager", __dir__)

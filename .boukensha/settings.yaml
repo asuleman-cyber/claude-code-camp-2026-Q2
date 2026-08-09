@@ -39,6 +39,6 @@ mcp_servers:
       # crosses the socket in both directions (passwords redacted) — the
       # expensive one, but it's what shows what the agent's `drain` calls
       # silently discard between commands. Both off unless set; both read
-      # by week2_capable/mud_monitor.
+      # by week2_observability/mud_monitor.
       MUD_MANAGER_LOG_DIR: .boukensha/manager
       MUD_TELNET_LOG_DIR:  .boukensha/telnet

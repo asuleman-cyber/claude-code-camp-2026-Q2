@@ -28,7 +28,7 @@ module Boukensha
       # run" apart from "never configured." Without this, the file only
       # appeared lazily on the first #record call, so the two states were
       # indistinguishable from the filesystem (see ErrorLogStore#enabled?,
-      # week2_capable/mud_monitor/lib/mud_monitor/error_log_store.rb).
+      # week2_observability/mud_monitor/lib/mud_monitor/error_log_store.rb).
       FileUtils.mkdir_p(File.dirname(@path))
       FileUtils.touch(@path) unless File.exist?(@path)
     rescue StandardError

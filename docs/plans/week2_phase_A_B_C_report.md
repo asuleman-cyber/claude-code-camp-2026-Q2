@@ -23,10 +23,10 @@ below was run against the real CircleMUD on `localhost:4000`, not just fixtures.
 
 ## Before Phase A: the foundation
 
-Before any of the three phases below, `week2_capable/` needed a starting point. I
+Before any of the three phases below, `week2_observability/` needed a starting point. I
 forked my own most-advanced week 1 work forward — my final-stage Ruby agent (the one
-with full context management and MCP support) became `week2_capable/boukensha`, and
-my own MUD client gem became `week2_capable/mud_manager`. Two things had to be fixed
+with full context management and MCP support) became `week2_observability/boukensha`, and
+my own MUD client gem became `week2_observability/mud_manager`. Two things had to be fixed
 in the fork:
 
 - **Cross-package paths.** The test suite and demo scripts reached the MUD client via
@@ -55,10 +55,10 @@ anything else (`mud_manager` 16/146, `boukensha` 22/66).
 | Piece | File | What it does |
 |---|---|---|
 | Admin primitives | `mud_manager/lib/mud_manager/primitives.rb` | `admin_goto`/`admin_transfer` — immortal-only commands, never exposed as MCP tools, used only by the reset script below. |
-| Reset script | `week2_capable/bin/reset` | Standalone Ruby script, no MCP daemon involved: logs in as the player (so there's a live target), logs in as admin, `goto`s the starting room, `trans`fers the player to it, quits both cleanly. |
+| Reset script | `week2_observability/bin/reset` | Standalone Ruby script, no MCP daemon involved: logs in as the player (so there's a live target), logs in as admin, `goto`s the starting room, `trans`fers the player to it, quits both cleanly. |
 | Composite `inspect` tool | `mud_manager/lib/mud_manager/mcp/dispatcher.rb` | `look` + `exits` in one MCP round trip instead of two separate tool calls. Tool count went from 26 to 27. |
 | `Boukensha::Permissions` | `boukensha/lib/boukensha/permissions.rb` | A pure allowlist, default-deny gate — `tool(param: value|value2)` rule grammar, `*` for any value, bare rule names matching under any MCP prefix. Enforced in `Registry#tool`/`#dispatch`, the one place every registration path (MCP-derived and native) goes through. No `allow:` block on a task = fully permissive, so nothing changes unless a task opts in. |
-| `week2_capable/bin/rebuild` | — | Rebuilds and reinstalls both gems from source. Uses `--ignore-dependencies` on install so the unmet TUI dependency (see above) doesn't block installing the other 95% of the gem. |
+| `week2_observability/bin/rebuild` | — | Rebuilds and reinstalls both gems from source. Uses `--ignore-dependencies` on install so the unmet TUI dependency (see above) doesn't block installing the other 95% of the gem. |
 
 ### Verified live
 

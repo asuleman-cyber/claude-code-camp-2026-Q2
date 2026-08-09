@@ -10,10 +10,10 @@
 # this follows: claude-code-camp-2026-Q2-main/docs/plans/week_2/reset_script.md
 #
 # Usage:
-#   ruby week2_capable/bin/reset
+#   ruby week2_observability/bin/reset
 #   ADMIN_USERNAME=admin ADMIN_PASSWORD=password \
 #   PLAYER_USERNAME=dummy PLAYER_PASSWORD=helloworld \
-#   ruby week2_capable/bin/reset
+#   ruby week2_observability/bin/reset
 #
 # PLAYER_USERNAME/PLAYER_PASSWORD fall back to MUD_NAME/MUD_PASSWORD — the
 # same pair settings.yaml's mcp_servers.mud block reads — so this works with

@@ -15,13 +15,13 @@ module MudMonitor
   # (forked from week1_baseline/log_viz), the mud_manager command log, and
   # the raw telnet feed — one app instead of three, per
   # docs/plans/week_2/mud_monitor.md's stated goal. Scoped down from that
-  # doc's Rails+React design to Sinatra+ERB (see week2_capable/README.md
+  # doc's Rails+React design to Sinatra+ERB (see week2_observability/README.md
   # Phase B) and to "live polling" (meta-refresh) rather than SSE.
   class App < Sinatra::Base
     set :root, File.expand_path("../..", __dir__)
-    # __dir__ is .../week2_capable/mud_monitor/lib/mud_monitor — four levels
+    # __dir__ is .../week2_observability/mud_monitor/lib/mud_monitor — four levels
     # up reaches the repo root: lib/mud_monitor -> lib -> mud_monitor ->
-    # week2_capable -> repo root.
+    # week2_observability -> repo root.
     set :sessions_dir, ENV.fetch("MUD_MONITOR_SESSIONS_DIR") {
       File.expand_path("../../../../.boukensha/sessions", __dir__)
     }

@@ -1,4 +1,4 @@
-week2_capable contains both week 2 and week 3.
+week2_observability contains both week 2 and week 3.
 Week 2 was originally capable but was pushed out a week
 Week 2 became observaiblity
 Week 3 became capable
@@ -64,11 +64,11 @@ reference plan docs it links to under
   quits both cleanly.
 
   ```sh
-  ruby week2_capable/bin/reset
+  ruby week2_observability/bin/reset
   # or with explicit credentials:
   ADMIN_USERNAME=admin ADMIN_PASSWORD=password \
   PLAYER_USERNAME=dummy PLAYER_PASSWORD=helloworld \
-  ruby week2_capable/bin/reset
+  ruby week2_observability/bin/reset
   ```
 
   `PLAYER_USERNAME`/`PLAYER_PASSWORD` fall back to `MUD_NAME`/`MUD_PASSWORD`
@@ -119,7 +119,7 @@ reference plan docs it links to under
   note above).
 
   ```sh
-  ruby week2_capable/bin/rebuild
+  ruby week2_observability/bin/rebuild
   ```
 
 Tests: `mud_manager` 22 runs / 163 assertions, `boukensha` 50 runs / 133

@@ -2,7 +2,7 @@ require_relative "helper"
 
 # Admin primitives are never exposed as MCP tools (see the "Admin" section
 # comment in primitives.rb) — they exist for operator scripts like
-# week2_capable/bin/reset that log in as an immortal character directly.
+# week2_observability/bin/reset that log in as an immortal character directly.
 # Covering their command-string shape here is the only test path they get.
 class TestAdminPrimitives < Minitest::Test
   P = MudManager::Primitives

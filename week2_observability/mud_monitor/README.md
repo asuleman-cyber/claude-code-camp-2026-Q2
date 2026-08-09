@@ -10,14 +10,14 @@ the `sqlite3` gem weren't installed here and were untested on Windows —
 standing up that whole toolchain for what's fundamentally a log viewer felt
 like a disproportionate lift. Built on Sinatra + ERB instead — the exact
 stack `week1_baseline/log_viz` already proved out in this repo, with zero
-new toolchain. See `week2_capable/README.md`'s Phase B section and
+new toolchain. See `week2_observability/README.md`'s Phase B section and
 `docs/plans/week2_phase_A_B_C_report.md` for the full reasoning. Live
 updates are meta-refresh polling, not SSE.
 
 ## Run it
 
 ```sh
-cd week2_capable/mud_monitor
+cd week2_observability/mud_monitor
 bundle install   # first time only
 ruby bin/mud_monitor            # http://localhost:4568
 ```
