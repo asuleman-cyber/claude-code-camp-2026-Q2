@@ -1,0 +1,18 @@
+{"stream":"room","op":"discovered","room_id":5,"name":"Wall Road","seq":1,"at":"2026-08-10T00:33:07.805+01:00"}
+{"stream":"player","key":"age","from":null,"to":18,"seq":2,"at":"2026-08-10T00:33:07.898+01:00"}
+{"stream":"player","key":"hp","from":null,"to":22,"seq":3,"at":"2026-08-10T00:33:07.899+01:00"}
+{"stream":"player","key":"max_hp","from":null,"to":22,"seq":4,"at":"2026-08-10T00:33:07.899+01:00"}
+{"stream":"player","key":"mana","from":null,"to":100,"seq":5,"at":"2026-08-10T00:33:07.900+01:00"}
+{"stream":"player","key":"max_mana","from":null,"to":100,"seq":6,"at":"2026-08-10T00:33:07.900+01:00"}
+{"stream":"player","key":"move","from":null,"to":78,"seq":7,"at":"2026-08-10T00:33:07.901+01:00"}
+{"stream":"player","key":"max_move","from":null,"to":83,"seq":8,"at":"2026-08-10T00:33:07.901+01:00"}
+{"stream":"player","key":"armor_class","from":null,"to":"39/10","seq":9,"at":"2026-08-10T00:33:07.901+01:00"}
+{"stream":"player","key":"alignment","from":null,"to":12,"seq":10,"at":"2026-08-10T00:33:07.902+01:00"}
+{"stream":"player","key":"exp","from":null,"to":58,"seq":11,"at":"2026-08-10T00:33:07.902+01:00"}
+{"stream":"player","key":"gold","from":null,"to":0,"seq":12,"at":"2026-08-10T00:33:07.903+01:00"}
+{"stream":"player","key":"quest_points","from":null,"to":0,"seq":13,"at":"2026-08-10T00:33:07.903+01:00"}
+{"stream":"player","key":"exp_to_next_level","from":null,"to":1942,"seq":14,"at":"2026-08-10T00:33:07.903+01:00"}
+{"stream":"player","key":"level","from":null,"to":1,"seq":15,"at":"2026-08-10T00:33:07.903+01:00"}
+{"stream":"player","key":"position","from":null,"to":"standing","seq":16,"at":"2026-08-10T00:33:07.904+01:00"}
+{"stream":"player","key":"current_room_id","from":null,"to":5,"seq":17,"at":"2026-08-10T00:33:08.100+01:00"}
+{"stream":"player","key":"last_direction","from":null,"to":null,"seq":18,"at":"2026-08-10T00:33:08.101+01:00"}

@@ -263,10 +263,14 @@ chronicler $0.007, planner $0.003, so orchestration is ~22% of spend.
    state block already named — the tool description steering away from a
    wasteful call, working as designed, but leaving the phase unvalidated. See
    its write-up for how to actually test it.
-2. **Planner and Chronicler prompts are never logged.** Both call
-   `Client#call` directly instead of going through `Agent#run`, and only
-   `Agent#run` emits `Logger#prompt`. Their responses are logged and costed
-   correctly; what they were *given* is invisible in the session log.
-   Verifying the Planner received memory took a separate script.
+2. **Two logging bugs, both since fixed.** The Planner's and Chronicler's
+   prompts were never logged (they call `Client#call` directly, and only
+   `Agent#run` emits `Logger#prompt`) — so the two roles whose behaviour is
+   entirely determined by their input were the two whose input was invisible.
+   Fixing that surfaced a second, **pre-existing since Phase D**: the state
+   block is appended as a synthetic trailing *user* message, so `mud_monitor`
+   had been rendering `[here] Poor Alley…` as the human's instruction in
+   every hooked session. Both fixed; old logs render correctly too via a
+   `[here]`-prefix fallback.
 
 Still open: `Session.play` (the autonomous outer loop) from Phase G.

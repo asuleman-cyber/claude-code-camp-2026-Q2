@@ -269,6 +269,11 @@ module Boukensha
       be      = Boukensha.build_backend(backend, model: model,
                                         api_key: Boukensha.api_key_for(backend), ollama_host: @ollama_host)
       builder = PromptBuilder.new(ctx, be)
+      # Same reason as run_planner: a direct Client#call bypasses Agent#run's
+      # prompt logging, and what the Chronicler was shown is the only way to
+      # tell an over-forgetting digest from a thin session.
+      @logger.prompt(messages: ctx.messages, tools: ctx.tools,
+                     context_window: ctx.context_window, task: Tasks::Chronicler)
 
       response = Client.new(builder).call(
         tools: [], max_output_tokens: Tasks::Chronicler.max_output_tokens(settings)
@@ -326,6 +331,13 @@ module Boukensha
                                api_key: Boukensha.api_key_for(backend), ollama_host: @ollama_host)
       builder = PromptBuilder.new(ctx, be)
       @logger.orchestrator(role: "planner", event: "start", detail: goal.to_s)
+      # Logged explicitly: this path calls Client#call directly rather than
+      # going through Agent#run, which is where every other role's prompt gets
+      # logged. Without this the one role whose behaviour is entirely
+      # determined by its input (the goal, and the memory digest) is the one
+      # whose input never reaches the session log.
+      @logger.prompt(messages: ctx.messages, tools: ctx.tools,
+                     context_window: ctx.context_window, task: Tasks::Planner)
 
       response = Client.new(builder).call(
         tools: [], max_output_tokens: Tasks::Planner.max_output_tokens(settings)

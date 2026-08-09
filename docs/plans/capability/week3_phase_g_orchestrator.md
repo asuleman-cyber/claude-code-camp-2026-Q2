@@ -255,21 +255,47 @@ before the run.
 Orchestration overhead is ~22% of spend. Worth knowing before turning
 `every: 1` on.
 
-### What this run also exposed
+### What this run also exposed — two logging bugs, both since fixed
 
-**The Planner's and Chronicler's prompts are never logged.** `run_planner`
-and `run_chronicler` call `Client#call` directly rather than going through
-`Agent#run`, and `Logger#prompt` is only emitted inside `Agent#run`. Their
-*responses* are logged correctly (tagged `task: planner` / `chronicler`), so
-cost and output are visible — but what they were *given* is not. Verifying
-that the Planner actually received the memory digest needed a separate
-script; it could not be read off the session log.
+**1. The Planner's and Chronicler's prompts were never logged.**
+`run_planner` and `run_chronicler` call `Client#call` directly rather than
+going through `Agent#run`, and `Logger#prompt` is only emitted inside
+`Agent#run`. Their *responses* were logged correctly, so cost and output were
+visible — but what they were *given* was not, which is an awkward gap for the
+two roles whose entire behaviour is determined by their input. Verifying that
+the Planner received the memory digest needed a separate script.
 
-That is a real observability gap, and an awkward one for the two roles whose
-whole behaviour is determined by what you feed them. The fix is a
-`@logger.prompt(...)` call in both methods before the `Client#call`; not done
-here because this phase's verification run is not the place to change what it
-is verifying.
+Fixed: both now log their prompt before the call, and `Logger#prompt` carries
+a `task:` field so a subagent's request is distinguishable from the turn's
+real user input. Confirmed against a live session:
+
+```
+prompt  task=planner            msgs=1  tools=0
+prompt  task=player             msgs=2  tools=28
+prompt  task=player             msgs=5  tools=28
+prompt  task=chronicler         msgs=1  tools=0
+```
+
+**2. A pre-existing bug this uncovered: the state block was being rendered as
+the user's input.** `Context#messages` appends the state block as a synthetic
+trailing **user** message, and `Mud::Hooks#before_model` sets it *before*
+`Logger#prompt` runs — so `messages.last` was the state block, not what
+anyone typed. `mud_monitor` took `.last` as the turn's user entry, meaning
+every hooked session since **Phase D (Week 2)** showed `[here] Poor Alley…`
+where the human's instruction belonged.
+
+This predates Phase G entirely — the pre-fix session logs from this same run
+show it too — and was only noticed because the `task:` work put this exact
+parser branch under scrutiny. Two things worth taking from it: a synthetic
+message that is indistinguishable in shape from a real one will eventually be
+mistaken for one, and a renderer nobody reads carefully can be wrong for
+months without a test failing.
+
+Fixed on both sides: `Logger#prompt` records `synthetic_tail`, and
+`Session#turn_opening_message` skips it. Logs written before the flag existed
+fall back to sniffing the `[here]` prefix, so existing session history renders
+correctly too — verified against all three live logs, which now show
+`"Look around, then move one room…"` rather than the state block.
 
 ## Not yet done
 
@@ -289,8 +315,6 @@ is verifying.
 
 ## Try yourself
 
-- **Add the missing prompt logging** (above) — two lines, and it makes the
-  Planner and Chronicler as inspectable as every other role.
 - **Read the transcript** at `/sessions/:id` — the roles are colour-coded
   down the left edge, and a `flag` renders red.
 - **Set `every: 1` and watch the cost breakdown.** Judging every turn roughly

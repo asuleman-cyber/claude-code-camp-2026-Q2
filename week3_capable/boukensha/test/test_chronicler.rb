@@ -121,6 +121,37 @@ class TestChronicler < Minitest::Test
     end
   end
 
+  # ---- prompt logging ---------------------------------------------------
+  # run_planner and run_chronicler call Client#call directly rather than
+  # going through Agent#run, which is where every other role's prompt is
+  # logged. Until this was fixed, the two roles whose behaviour is entirely
+  # determined by their input were the two whose input never reached the log.
+
+  def test_the_planner_logs_the_prompt_it_was_given
+    logged = capture_prompts do |orch, mem|
+      mem.write_digest("## Open threads\nFind the guild.")
+      # plan! swallows the stubbed ApiError; the prompt is logged before it.
+      without_network { orch.plan!(goal: "explore", context: Boukensha::Context.new(system: "base")) }
+    end
+
+    planner = logged.find { |e| e[:task] == "planner" }
+    refute_nil planner, "the planner must log its prompt"
+    body = planner[:messages].map { |m| m.content.to_s }.join
+    assert_includes body, "Find the guild.", "the logged prompt must contain the memory it was given"
+    assert_includes body, "explore",         "...and the goal"
+  end
+
+  def test_the_chronicler_logs_the_prompt_it_was_given
+    logged = capture_prompts do |orch, _mem|
+      orch.note_activity!
+      without_network { orch.flush_memory!(context: ctx, reason: "exit") }
+    end
+
+    chronicler = logged.find { |e| e[:task] == "chronicler" }
+    refute_nil chronicler, "the chronicler must log its prompt"
+    assert_includes chronicler[:messages].map { |m| m.content.to_s }.join, "go north"
+  end
+
   # ---- flush scheduling -------------------------------------------------
 
   def test_flush_is_a_no_op_when_nothing_has_happened
@@ -218,12 +249,30 @@ class TestChronicler < Minitest::Test
     <<~YAML
       memory:
         enabled: true
+      tasks:
+        planner:
+          provider: anthropic
+          model: claude-haiku-4-5
+        chronicler:
+          provider: anthropic
+          model: claude-haiku-4-5
       mcp_servers:
         mud:
           command: x
           env:
             MUD_NAME: Gandalf
     YAML
+  end
+
+  # Runs `block` with Client#call short-circuited, so a role's prompt gets
+  # logged but no HTTP request is made. Plain method swap — this minitest
+  # build has no minitest/mock.
+  def without_network
+    original = Boukensha::Client.instance_method(:call)
+    Boukensha::Client.define_method(:call) { |**| raise Boukensha::ApiError, "stubbed — no network in tests" }
+    yield
+  ensure
+    Boukensha::Client.define_method(:call, original)
   end
 
   def with_orchestrator
@@ -240,7 +289,36 @@ class TestChronicler < Minitest::Test
       def o.plan(**)         = nil
       def o.orchestrator(**) = nil
       def o.response(**)     = nil
+      def o.prompt(**)       = nil
       def o.session_id       = "test-session"
     end
+  end
+
+  # A logger that records only prompt events, so a test can assert what a
+  # role was actually shown.
+  class PromptRecorder
+    attr_reader :prompts
+
+    def initialize = @prompts = []
+    def plan(**) = nil
+    def orchestrator(**) = nil
+    def response(**) = nil
+    def session_id = "test-session"
+
+    def prompt(messages:, tools:, context_window:, task: nil)
+      @prompts << { task: task.respond_to?(:task_name) ? task.task_name : task,
+                    messages: messages }
+    end
+  end
+
+  def capture_prompts
+    rec = PromptRecorder.new
+    config_from(memory_yaml) do |cfg|
+      mem  = Boukensha::PlayerMemory.build(config: cfg, name: cfg.character_name, enabled: true)
+      orch = Boukensha::Orchestrator.new(cfg: cfg, servers: [], logger: rec,
+                                         planner_enabled: true, memory: mem)
+      yield orch, mem
+    end
+    rec.prompts
   end
 end

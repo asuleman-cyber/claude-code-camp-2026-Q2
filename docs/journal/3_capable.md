@@ -151,17 +151,43 @@ it works or that this agent wants it.
 **Cost:** $0.10 for both sessions — player $0.078, judge $0.013, chronicler
 $0.007, planner $0.003. Orchestration is ~22% of spend at `every: 2`.
 
-### 8. Two roles are invisible in the logs
+### 8. Two roles were invisible in the logs — and fixing it found a third bug
 
 `run_planner` and `run_chronicler` call `Client#call` directly instead of
 going through `Agent#run`, and `Logger#prompt` is only emitted inside
-`Agent#run`. Their responses are logged and costed correctly; what they were
-*given* is not recorded anywhere. Confirming the Planner had actually
-received the memory digest required a separate script — it could not be read
-off the session log.
+`Agent#run`. Their responses were logged and costed correctly; what they were
+*given* was not recorded anywhere. Confirming the Planner had actually
+received the memory digest required a separate script.
 
-> The two roles whose entire behaviour is determined by their input are the
-> two whose input isn't logged. Worth fixing before tuning either prompt.
+> The two roles whose entire behaviour is determined by their input were the
+> two whose input wasn't logged.
+
+Both now log their prompts, tagged with `task:` so a subagent's request is
+distinguishable from the turn's real user input. Which is what exposed the
+older bug underneath.
+
+### 9. A synthetic message will eventually be mistaken for a real one
+
+`Context#messages` appends the state block as a synthetic trailing **user**
+message, and `Mud::Hooks#before_model` sets it *before* `Logger#prompt` runs.
+So `messages.last` was the state block — and `mud_monitor`, taking `.last` as
+the turn's user entry, had been rendering `[here] Poor Alley…` where the
+human's instruction belonged. In every hooked session since Phase D. For two
+weeks.
+
+Nothing failed. The tests passed, the page rendered, the text looked
+plausible — it *is* a real message the model really received. It was only
+caught because the `task:` work put that parser branch under scrutiny, and
+because checking the live output meant reading a transcript closely enough to
+notice the first line was wrong.
+
+> Two lessons, and the second is the uncomfortable one. A synthetic message
+> that is indistinguishable in shape from a real one will eventually be
+> treated as real — the fix was to stop making them indistinguishable
+> (`synthetic_tail`), not to sharpen the guess. And a renderer nobody reads
+> carefully can be wrong for months without a single test going red: every
+> test asserted on data the parser produced, and none asserted that the data
+> meant what it claimed.
 
 **Still unknown:** whether the Chronicler over-forgets. Both rewrites here
 grew the digest and dropped nothing important, which is the easy case; the

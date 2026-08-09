@@ -57,10 +57,16 @@ module Boukensha
     # Every caller of `context.messages` (every backend's #to_payload, and
     # the logger) sees it for free — no per-backend plumbing needed.
     def messages
-      return @messages if @state_block.nil? || @state_block.empty?
+      return @messages unless state_block?
 
       @messages + [Message.new(:user, @state_block, nil)]
     end
+
+    # True when #messages appends a synthetic trailing user message. Readers
+    # of the session log need this to tell the state block apart from
+    # something the user actually said — they look identical on the wire, and
+    # both are role `user`.
+    def state_block? = !(@state_block.nil? || @state_block.to_s.empty?)
 
     def add_message(role, content, tool_use_id: nil)
       @messages << Message.new(role, content, tool_use_id)

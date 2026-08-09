@@ -70,7 +70,9 @@ module Boukensha
           @iteration += 1
           @hooks.before_model(context: @context)
           @logger.iteration(n: @iteration, max: @max_iterations)
-          @logger.prompt(messages: @context.messages, tools: @context.tools, context_window: @context.context_window)
+          @logger.prompt(messages: @context.messages, tools: @context.tools,
+                         context_window: @context.context_window, task: @task,
+                         synthetic_tail: @context.state_block?)
 
           response = @logger.in_span("boukensha.model_call", attributes: { "boukensha.iteration" => @iteration }) do
             @client.call(**call_opts)

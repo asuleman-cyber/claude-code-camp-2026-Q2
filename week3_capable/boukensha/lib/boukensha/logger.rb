@@ -44,11 +44,22 @@ module Boukensha
       write_log(phase: "turn_end", reason: reason, iterations: iterations, tokens: tokens)
     end
 
-    def prompt(messages:, tools:, context_window:)
+    # task: which role this request belongs to (Phase G+). nil means the
+    # Player, which is what every prompt was before there were other roles —
+    # readers use it to tell a subagent's request apart from the turn's real
+    # user input, since both are `phase: "prompt"`.
+    # synthetic_tail: true when the final entry in `messages` was synthesised
+    # rather than said — today that means Context#messages appended the
+    # state block (Phase D). `messages` still records exactly what was sent,
+    # because that is what the model saw; this flag is how a reader tells the
+    # conversation apart from the scaffolding around it.
+    def prompt(messages:, tools:, context_window:, task: nil, synthetic_tail: false)
       write_log(
         phase:          "prompt",
+        task:           task_name(task),
         message_count:  messages.size,
         messages:       messages.map { |m| serialize_message(m) },
+        synthetic_tail: synthetic_tail,
         tool_count:     tools.size,
         tools:          tools.keys,
         context_window: context_window

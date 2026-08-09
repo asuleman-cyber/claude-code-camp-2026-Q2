@@ -114,9 +114,16 @@ module MudMonitor
         when "iteration"
           current_iteration = event["n"]
         when "prompt"
+          # A subagent's request is also a `prompt` event, and the Planner's
+          # fires between `turn` and the Player's own first prompt — so
+          # without this guard the transcript would show the Planner's brief
+          # (goal + memory digest) where the user's actual input belongs, and
+          # then drop the real one. Only the Player's prompt opens a turn.
+          # `task` is absent on pre-Phase-G logs, which were all Player.
+          next if event["task"] && event["task"] != "player"
           next unless pending_user
 
-          message = event["messages"]&.last
+          message = turn_opening_message(event)
           if message && message["role"] == "user"
             @entries << Entry.new(type: :user, text: extract_text(message["content"]),
                                    turn: current_turn, iteration: current_iteration,
@@ -347,6 +354,35 @@ module MudMonitor
       @last_mono_ms = mono if mono
       @last_at      = at if at
       dt
+    end
+
+    # Prefix Mud::StateBlock renders. Only used to recognise the synthetic
+    # trailing message in logs written before `synthetic_tail` existed.
+    STATE_BLOCK_PREFIX = "[here]".freeze
+
+    # The message that actually opened this turn — what the user typed.
+    #
+    # Context#messages appends the state block as a synthetic trailing *user*
+    # message, and Mud::Hooks#before_model sets it before Logger#prompt runs,
+    # so the raw `.last` is the state block rather than anything anyone said.
+    # Both are role `user` and indistinguishable by shape, which is why the
+    # logger now records `synthetic_tail` explicitly.
+    #
+    # Sessions logged before that flag existed (every session from Phase D
+    # onward, until this fix) fall back to sniffing the "[here]" prefix — a
+    # heuristic, and deliberately only a fallback, so it cannot mask a
+    # correctly-flagged log.
+    def turn_opening_message(event)
+      messages = event["messages"].to_a
+      return messages[-2] if event["synthetic_tail"]
+
+      last = messages.last
+      if event["synthetic_tail"].nil? && last.is_a?(Hash) &&
+         last["role"] == "user" && last["content"].to_s.start_with?(STATE_BLOCK_PREFIX)
+        return messages[-2]
+      end
+
+      last
     end
 
     def extract_text(content)

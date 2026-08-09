@@ -181,6 +181,97 @@ module MudMonitor
       assert_equal "judge", session.entries.find { |e| e.type == :assistant }.task
     end
 
+    # A subagent's request is also a `prompt` event, and the Planner's fires
+    # between `turn` and the Player's own first prompt. Without the task
+    # guard the transcript would show the Planner's brief (goal + memory
+    # digest) where the user's real input belongs — and then drop the real
+    # one, because pending_user was already consumed.
+    def test_a_planner_prompt_does_not_hijack_the_turns_user_entry
+      session = Session.load(write_jsonl(
+        session_start, turn(0),
+        prompt("Memory: ...\n---\nThe goal: explore", "task" => "planner"),
+        iteration(1),
+        prompt("explore the temple"),
+        response, turn_end
+      ))
+
+      users = session.entries.select { |e| e.type == :user }
+
+      assert_equal 1, users.size, "exactly one user entry per turn"
+      assert_equal "explore the temple", users.first.text
+    end
+
+    def test_a_chronicler_prompt_is_also_ignored_as_user_input
+      session = Session.load(write_jsonl(
+        session_start, turn(0),
+        prompt("distil this session", "task" => "chronicler"),
+        iteration(1), prompt("go north"), response, turn_end
+      ))
+
+      assert_equal ["go north"], session.entries.select { |e| e.type == :user }.map(&:text)
+    end
+
+    # Context#messages appends the state block as a synthetic trailing *user*
+    # message, and Mud::Hooks sets it before Logger#prompt runs — so the raw
+    # `.last` is the state block, not what anyone said. Pre-existing since
+    # Phase D; every hooked session rendered the state block as the user's
+    # input until this was fixed.
+    def test_the_state_block_is_not_mistaken_for_user_input
+      path = write_jsonl(
+        session_start, turn(0), iteration(1),
+        { "phase" => "prompt", "at" => "2026-07-31T00:00:00.100Z", "mono_ms" => 1100,
+          "task" => "player", "synthetic_tail" => true,
+          "messages" => [
+            { "role" => "user", "content" => "go to the temple" },
+            { "role" => "user", "content" => "[here] Poor Alley\nexits: east" }
+          ] }.to_json,
+        response, turn_end
+      )
+
+      users = Session.load(path).entries.select { |e| e.type == :user }
+      assert_equal ["go to the temple"], users.map(&:text)
+    end
+
+    # Logs written before `synthetic_tail` existed still render correctly, via
+    # the "[here]" fallback.
+    def test_a_pre_fix_log_still_finds_the_real_user_input
+      path = write_jsonl(
+        session_start, turn(0), iteration(1),
+        { "phase" => "prompt", "at" => "2026-07-31T00:00:00.100Z", "mono_ms" => 1100,
+          "messages" => [
+            { "role" => "user", "content" => "go to the temple" },
+            { "role" => "user", "content" => "[here] Poor Alley\nexits: east" }
+          ] }.to_json,
+        response, turn_end
+      )
+
+      users = Session.load(path).entries.select { |e| e.type == :user }
+      assert_equal ["go to the temple"], users.map(&:text)
+    end
+
+    # A turn with no state block (hooks off) is untouched by any of this.
+    def test_no_state_block_means_the_last_message_is_the_input
+      path = write_jsonl(
+        session_start, turn(0), iteration(1),
+        { "phase" => "prompt", "at" => "2026-07-31T00:00:00.100Z", "mono_ms" => 1100,
+          "task" => "player", "synthetic_tail" => false,
+          "messages" => [{ "role" => "user", "content" => "go north" }] }.to_json,
+        response, turn_end
+      )
+
+      assert_equal ["go north"], Session.load(path).entries.select { |e| e.type == :user }.map(&:text)
+    end
+
+    # An explicit player tag behaves exactly like an untagged prompt.
+    def test_a_player_tagged_prompt_still_opens_the_turn
+      session = Session.load(write_jsonl(
+        session_start, turn(0), iteration(1),
+        prompt("go north", "task" => "player"), response, turn_end
+      ))
+
+      assert_equal ["go north"], session.entries.select { |e| e.type == :user }.map(&:text)
+    end
+
     # A pre-Phase-G log has no orchestrator lines at all and must still parse.
     def test_sessions_without_orchestrator_events_are_unaffected
       session = Session.load(write_jsonl(
