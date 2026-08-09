@@ -1,5 +1,11 @@
 # Week 3 "Capable" — plan
 
+> **TODO (post-Phase J):** once orchestrator/knowledge/navigator/memory are
+> all built and verified, remove the "What htnguyen901 built" table below and
+> every named reference to their repo — rewrite the Context section to
+> describe this repo's own design in its own terms. Keep the references
+> until then; they're the rationale for the choices made while building.
+
 ## Context
 
 `week3_capable` in the classmate's repo
