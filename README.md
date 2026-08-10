@@ -37,9 +37,9 @@ flowchart LR
     A["🧭 Plan<br/>write down a goal<br/>and a few steps"] --> B["🎮 Play<br/>read the room,<br/>decide, act"]
     B --> C{"🔍 Check<br/>is this working?"}
     C -->|"yes, keep going"| B
-    C -->|"not really — rethink"| A
-    B -.->|"when a session<br/>wraps up"| D["📝 Remember<br/>write down what<br/>was learned"]
-    D -.->|"read back in<br/>next session"| A
+    C -->|"not really"| D
+    B -.->|"session wraps up"| D["📝 Remember<br/>write down what<br/>was learned"]
+    D -.->|"back to planning,<br/>next time"| A
 ```
 
 - **Plan** — before playing, the agent writes itself a short goal and a few
