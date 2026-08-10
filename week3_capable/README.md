@@ -128,11 +128,11 @@ backed by three new read-only `Store` methods: `route_to` (BFS over
 
 Two things worth knowing:
 
-1. **No second process.** The reference moved this to a separate
-   `log_viz --mcp` server; here the loader hands the orchestrator the *same*
-   `Store` instance `Mud::Hooks` writes through, so a subagent reads exactly
-   what was just written — no subprocess, no handshake, no second handle on
-   a database this process already has open.
+1. **No second process.** Exposing this as its own MCP server would match how
+   every other tool reaches the agent, but the loader hands the orchestrator
+   the *same* `Store` instance `Mud::Hooks` writes through — so a subagent
+   reads exactly what was just written, with no subprocess, no handshake, and
+   no second handle on a database this process already has open.
 
 2. **An unwalked exit is never part of a route.** `route_to` only follows
    edges with `target_room_id` set, which Phase D leaves NULL until the agent

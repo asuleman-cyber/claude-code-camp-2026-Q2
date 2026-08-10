@@ -31,15 +31,19 @@ connect. Phase H adds the ask side of the same data.
 
 ## The decisions worth knowing about
 
-### No second process, unlike the reference
+### No second process
 
-The reference design moved its equivalent out to a separate `log_viz --mcp`
-server. Here the store is already open in this process — the loader hands the
-orchestrator **the very same `Store` instance** `Mud::Hooks` writes through.
+The tempting move is to expose this as its own MCP server — it would match
+how every *other* tool reaches the agent, and it would make the query API
+reusable from a non-Ruby client. Rejected: the store is already open in this
+process, and the loader hands the orchestrator **the very same `Store`
+instance** `Mud::Hooks` writes through.
+
 A stdio hop would buy isolation nothing needs and cost a subprocess, a
 handshake, and a second file handle on a SQLite database this process already
 holds open. Sharing the instance also means a subagent reads exactly what was
-just written, with no WAL visibility question to reason about.
+just written, with no WAL visibility question to reason about. Worth
+revisiting only if a non-Ruby client ever needs the same queries.
 
 ### An unwalked exit is not a route
 

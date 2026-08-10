@@ -9,12 +9,12 @@ module Boukensha
     # standing in, and nothing could ask whether two rooms connect. This tool
     # is the ask side of the same data.
     #
-    # It is not an MCP server. The reference design moved its equivalent out
-    # to a separate `log_viz --mcp` process; here the store is already open
-    # in-process (the loader hands the very same Store instance Mud::Hooks
-    # writes through), so a stdio hop would buy isolation nothing needs and
-    # cost a subprocess, a handshake, and a second file handle on a SQLite
-    # database this process already holds.
+    # It is deliberately NOT an MCP server, unlike every other tool the agent
+    # can call. The store is already open in-process (the loader hands the
+    # very same Store instance Mud::Hooks writes through), so a stdio hop
+    # would buy isolation nothing needs and cost a subprocess, a handshake,
+    # and a second file handle on a SQLite database this process already
+    # holds. Revisit only if a non-Ruby client needs these queries too.
     #
     # Read-only in the strong sense: every Store method it calls is a SELECT,
     # and it never touches the MUD. Asking about the world cannot change it,

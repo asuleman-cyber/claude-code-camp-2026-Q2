@@ -55,7 +55,7 @@
 
 ### 5. Knowledge became queryable instead of only injected
 - Added `Store#route_to` (BFS over `room_exits`), `#all_exits`, `#find_rooms_by_name`; surfaced as one `world_knowledge` tool with `kind=overview|room|route`.
-- Did **not** stand up a second MCP server the way the reference did — the store is already open in-process, so the loader hands the orchestrator the same `Store` instance `Mud::Hooks` writes through.
+- Did **not** expose it as its own MCP server, unlike every other tool the agent can call — the store is already open in-process, so the loader hands the orchestrator the same `Store` instance `Mud::Hooks` writes through.
 - `route_to` walks only edges where `target_room_id IS NOT NULL`, which is exactly "edges actually walked". A frontier is shown, marked `(unexplored)`, but can never appear inside a route.
 
 > "Can I get there by a route I know?" is a different question from "does a path exist?", and only the first one is safe to plan on.

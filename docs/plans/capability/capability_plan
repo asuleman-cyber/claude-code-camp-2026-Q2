@@ -1,22 +1,9 @@
 # Week 3 "Capable" — plan
 
-> **TODO (nearly actionable):** remove the "What htnguyen901 built" table
-> below and every named reference to their repo — rewrite the Context section
-> to describe this repo's own design in its own terms.
->
-> The condition was "built *and verified*". After the 2026-08-09 live run:
-> **G, H and J are verified live; I is not** — the Navigator was offered to a
-> real model twice and never called, so nothing yet shows it works or is
-> wanted. Its reference rationale is the one still doing work, since "delete
-> it and keep the BFS" is a live possibility. Clear the rest whenever you
-> like; keep the Navigator row until it has either been exercised or dropped.
-
 ## Context
 
-`week3_capable` in the classmate's repo
-(`claude-code-camp-2026-Q2-htnguyen901`) is that student's answer to the
-camp's Week 3 assignment, whose rubric already sits, unfilled, in **this**
-repo at `docs/journal/3_capable.md`:
+The camp's Week 3 assignment, whose rubric sits in
+`docs/journal/3_capable.md`:
 
 > Design the Agentic Loop that is capable of executing complex goals — plan
 > decomposition, refined memory/knowledge access, (optional) playstyle/risk
@@ -35,26 +22,24 @@ no orchestrator, turn-counter wrapper, or memory-store code exists"** (the
 memory-store note is now stale — Phase D built that — but **no orchestrator
 exists**, and no *cross-session* character memory exists either).
 
-**Goal of this plan:** reach the same "capable" milestone
-(orchestration/planning, richer knowledge access, navigation, memory) — but
-by *extending* the existing Phase A–F architecture, not by porting
-htnguyen901's files. Where this repo already solved a piece (room memory,
-room graph, permissions engine), reuse it; where it's a true gap
-(orchestrator, cross-session memory), build it fresh, informed by how the
-reference did it.
+**Goal of this plan:** reach the "capable" milestone
+(orchestration/planning, richer knowledge access, navigation, memory) by
+*extending* the existing Phase A–F architecture. Where this repo already
+solved a piece (room memory, room graph, permissions engine), reuse it;
+where it's a true gap (orchestrator, cross-session memory), build it fresh.
 
-## What htnguyen901 built (for reference, not for copying)
+**The four capabilities**, one phase each:
 
-| Step | Capability | Core mechanism |
+| Phase | Capability | Approach |
 |---|---|---|
-| `18_orchestrator` | Planner sets a plan, Player runs, Judge checkpoints | `Tasks::Planner`/`Tasks::Judge`, `Context#plan` injected into system prompt, verdict `continue/replan/flag` drives a `Session.play` outer loop |
-| `19_knowledge` | World knowledge queryable, not just injected | Moved room/route knowledge into a separate `log_viz --mcp` server (`world__room_knowledge`, `world__route_to` — BFS over an edges table) |
-| `20_navigator` | Dedicated path-finding subagent | `Tasks::Navigator`, read-only, bounded, isolated context; exposed to Player/Judge/Planner as a native `consult_navigator` tool |
-| `21_memory` | Cross-session character memory | `PlayerMemory` (jsonl + prose digest), `Tasks::Chronicler` (zero tools), reaches the Player only via the Planner's prompt |
+| G | Planner sets a plan, Player runs, Judge checkpoints | `Tasks::Planner`/`Tasks::Judge`; plan injected into the system prompt so compaction can't evict it; verdict `continue/replan/flag` |
+| H | World knowledge queryable, not just injected | Read-only query API over the existing `Store` — BFS `route_to`, room lookup, overview |
+| I | Dedicated path-finding subagent | `Tasks::Navigator`, read-only, bounded, isolated context; exposed as a native `consult_navigator` tool |
+| J | Cross-session character memory | `PlayerMemory` (jsonl + prose digest), `Tasks::Chronicler` (zero tools), reaching the Player only via the Planner's prompt |
 
-Their `Tasks::*` all subclass a `Tasks::Base` that reads `provider`/`model`/
+All four are `Tasks::Base` subclasses reading `provider`/`model`/
 `prompt_override`/`max_iterations` per task name out of `settings.yaml`'s
-`tasks:` block — **this repo already has this exact pattern**
+`tasks:` block — **this repo already has that pattern**
 (`boukensha/lib/boukensha/tasks/base.rb`, `tasks/player.rb`), so adding
 `Tasks::Planner`/`Tasks::Judge`/`Tasks::Navigator`/`Tasks::Chronicler` is a
 drop-in, not new plumbing.
@@ -68,7 +53,7 @@ drop-in, not new plumbing.
 | Query access to knowledge (for tasks other than Player) | **Missing.** Knowledge only ever reaches the Player, only as an auto-injected block — nothing can *ask* "what's at room X" or "is there a path A→B" on demand. | Build (small — a thin read API over the existing `Store`). |
 | Orchestrator (Planner/Judge, plan decomposition, verdict loop) | **Missing entirely** — confirmed by this repo's own `ITERATIONS.md`. | Build (the headline piece). |
 | Navigator subagent | **Missing** — the data exists, not a bounded subagent or a `consult_navigator` tool. | Build (thin — mostly wiring over existing data). |
-| Cross-session character memory (discoveries/mistakes/strategies across runs) | **Missing.** Existing memory is spatial/world state, not narrative digest across sessions. | Build fresh — genuinely new, closest 1:1 to the reference design. |
+| Cross-session character memory (discoveries/mistakes/strategies across runs) | **Missing.** Existing memory is spatial/world state, not narrative digest across sessions. | Build fresh — the only piece with no existing overlap. |
 | Per-task tool permissions | **Have it, unused.** `Boukensha::Permissions` (Phase A) is built, tested, and off. Judge/Navigator are the first tasks that actually *need* a restricted, read-only tool surface. | Turn on for the new tasks — this is the natural moment. |
 
 ## Recommended approach
@@ -93,10 +78,9 @@ Three deviations from the plan below, each deliberate:
 
 1. **`role: inspector` became a `Permissions` allowlist.** This repo's tool
    specs have no role concept; adding one would mean a second gate beside
-   Phase A's. `Tasks::Judge::READ_ONLY_TOOLS` is a code constant fed through
-   `Permissions` — same guarantee, one gate. (The plan's own parenthetical
-   already called for reusing `Permissions`; this just resolves the tension
-   with the borrowed `role:` wording.)
+   Phase A's, and two gates deciding the same question is how they drift
+   apart. `Tasks::Judge::READ_ONLY_TOOLS` is a code constant fed through
+   `Permissions` — same guarantee, one gate.
 2. **`Session.play` was not built** — the plan offered it *or* "an equivalent
    wrapper around the existing `Repl`", and the REPL wrapper is what shipped.
    A component whose job is deciding when to stop should keep a human in the
@@ -147,10 +131,9 @@ is the intended path for a geographically impossible plan.
 
 Original plan:
 
-Do **not** stand up a second process/MCP server the way the reference did
-(`log_viz --mcp`) — room memory already lives in-process inside `boukensha`
-via `Mud::Memory::Store`, so a network/stdio hop would be pure overhead
-here. Instead:
+Do **not** stand up a second process/MCP server for this — room memory
+already lives in-process inside `boukensha` via `Mud::Memory::Store`, so a
+network/stdio hop would be pure overhead here. Instead:
 
 - Add a handful of read-only methods to `Store` (e.g. `all_exits` — the
   batch version `mud_monitor`'s `KnowledgeStore` already proved out for the
@@ -158,7 +141,7 @@ here. Instead:
   "Knowledge map" note — port that same batch-query idea into the
   agent-facing `Store`, not just the monitor's read replica) and a
   `route_to(from_id, to_id)` BFS over `room_exits`, scoped to rooms already
-  visited (mirrors the reference's own scoping choice).
+  visited — an unwalked exit is a lead, never a route.
 - Wrap these as one native, read-only tool (register via `RunDSL#tool`,
   dispatch via `RunDSL#dispatch` — the same seam `inspect_room` and
   `Mud::Hooks` already use) available only to Judge/Navigator/Planner's

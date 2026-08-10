@@ -121,13 +121,17 @@ Player's history — over a shared connection.
 
 ### Read-only means Permissions, not a new `role:` field
 
-The reference design expresses the Judge's surface as `role: inspector` on
-each tool spec. This codebase's tool specs have no role concept, and adding
+The obvious way to express "this task only gets observation tools" is a
+`role:` field on each tool spec — tag the read-only ones `inspector`, filter
+on it. Rejected: this codebase's tool specs have no role concept, and adding
 one would mean a second gate running beside the allowlist Phase A already
-built, tested, and left switched off. So the read-only surface is
-`Tasks::Judge::READ_ONLY_TOOLS` fed through `Permissions` — same guarantee,
-one gate, enforced in `Registry#tool`/`#dispatch` like everything else. Phase
-A's engine finally has a real caller.
+built, tested, and left switched off. Two gates deciding the same question is
+how they drift apart.
+
+So the read-only surface is `Tasks::Judge::READ_ONLY_TOOLS` fed through
+`Permissions` — same guarantee, one gate, enforced in
+`Registry#tool`/`#dispatch` like everything else. Phase A's engine finally
+has a real caller.
 
 It is a **code constant, not a settings.yaml `allow:` block**: "the Judge
 cannot move the character" is a correctness property of the orchestrator, not
