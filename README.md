@@ -19,6 +19,12 @@ goal, checks whether it's actually making progress, and remembers what it
 learned the next time it logs in. It's been run against a real, live game
 server throughout, not just tested in theory.
 
+> Two real sessions against a live game server cost **$0.10** total, and
+> produced a genuine mid-session correction — the reviewer role paused the
+> agent partway through, decided to rethink its plan, and what it had
+> learned carried over into the next session. Full run recorded in
+> [`docs/journal/3_capable.md`](docs/journal/3_capable.md).
+
 ## The journey, week by week
 
 | Week | What was added |
