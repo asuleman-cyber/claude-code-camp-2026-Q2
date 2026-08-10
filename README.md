@@ -60,9 +60,12 @@ flowchart LR
   agent writes itself a short note about what it learned, so it isn't
   starting from scratch next time.
 
-Each of those four roles is deliberately limited to only what its job needs
-— the reviewer can't move the character, for instance — which is what makes
-each one trustworthy rather than just another thing that could go wrong.
+Each of those four roles is a separate call to an AI model — not scripted
+logic — and each is deliberately limited to only what its job needs: the
+reviewer can't move the character, for instance. That's what makes each one
+trustworthy rather than just another thing that could go wrong, and it's
+also why this is an *orchestration* of several small, narrow AI calls
+rather than one big one doing everything.
 
 *(For readers who want the code-level names: these four roles are called
 the Planner, Player, Judge, and Chronicler — see
@@ -107,6 +110,11 @@ flowchart TD
 
 A few things worth knowing at a glance:
 
+- **Every double-bracketed box is a separate API call**, not scripted
+  logic — Planner, Player, Judge, Navigator, and Chronicler are each
+  configured independently (provider + model, see Setup) and can run on
+  different models: a cheap one for a quick checkpoint, a stronger one for
+  actual play. Nothing here is one model pretending to be five.
 - **Judge and Navigator are permission-gated to read-only**, not just asked
   nicely — the tools that would move the character are never even
   registered for them, so calling one raises an error rather than being
