@@ -39,14 +39,18 @@ server throughout, not just tested in theory.
 At its core, one loop repeats every time the agent plays:
 
 ```mermaid
+%%{init: {"flowchart": {"useMaxWidth": false}}}%%
 flowchart LR
-    A["🧭 Plan<br/>write down a goal<br/>and a few steps"] --> B["🎮 Play<br/>read the room,<br/>decide, act"]
-    B --> C{"🔍 Check<br/>is this working?"}
+    A["🧭🤖 Plan<br/>write down a goal<br/>and a few steps"] --> B["🎮🤖 Play<br/>read the room,<br/>decide, act"]
+    B --> C{"🔍🤖 Check<br/>is this working?"}
     C -->|"yes, keep going"| B
     C -->|"not really"| D
-    B -.->|"session wraps up"| D["📝 Remember<br/>write down what<br/>was learned"]
+    B -.->|"session wraps up"| D["📝🤖 Remember<br/>write down what<br/>was learned"]
     D -.->|"back to planning,<br/>next time"| A
 ```
+
+🤖 marks a step that's an AI model call — all four are, none of this loop is
+scripted logic.
 
 - **Plan** — before playing, the agent writes itself a short goal and a few
   concrete steps.
@@ -79,21 +83,22 @@ actual components involved — for reviewers who want to see the shape of the
 system without reading source yet:
 
 ```mermaid
+%%{init: {"flowchart": {"useMaxWidth": false}}}%%
 flowchart TD
     Input(["Human turn input"]) --> PlanGate{"Plan needed?"}
-    PlanGate -->|"yes"| Planner[["Planner<br/>writes goal + steps<br/>(no tools)"]]
+    PlanGate -->|"yes"| Planner[["🤖 Planner<br/>writes goal + steps<br/>(no tools)"]]
     PlanGate -->|"no"| Player
     Planner --> Player
 
     subgraph Turn["Player turn"]
         direction TB
-        Player[["Player"]] -->|"game commands"| MUD[("mud-manager<br/>MCP server")]
-        Player -->|"fuzzy destination"| Navigator[["Navigator<br/>(read-only)"]]
+        Player[["🤖 Player"]] -->|"game commands"| MUD[("mud-manager<br/>MCP server")]
+        Player -->|"fuzzy destination"| Navigator[["🤖 Navigator<br/>(read-only)"]]
         MUD --> Player
         Navigator --> Player
     end
 
-    Player --> Judge[["Judge<br/>checkpoint<br/>(read-only)"]]
+    Player --> Judge[["🤖 Judge<br/>checkpoint<br/>(read-only)"]]
     Judge -.->|"room / route lookups"| KB[("Knowledge store<br/>room map")]
     Judge -.->|"fuzzy destination"| Navigator
     Navigator -.->|"room / route lookups"| KB
@@ -101,7 +106,7 @@ flowchart TD
     Judge -->|"continue"| Input
     Judge -->|"replan"| Input
     Judge -->|"flag (warns; play continues)"| Input
-    Judge -->|"replan or flag"| Chronicler[["Chronicler<br/>(no tools)"]]
+    Judge -->|"replan or flag"| Chronicler[["🤖 Chronicler<br/>(no tools)"]]
 
     Boundary(["/exit, /clear, EOF —<br/>independent of the Judge"]) --> Chronicler
     Chronicler --> Memory[("Player memory<br/>digest")]
@@ -110,11 +115,11 @@ flowchart TD
 
 A few things worth knowing at a glance:
 
-- **Every double-bracketed box is a separate API call**, not scripted
-  logic — Planner, Player, Judge, Navigator, and Chronicler are each
-  configured independently (provider + model, see Setup) and can run on
-  different models: a cheap one for a quick checkpoint, a stronger one for
-  actual play. Nothing here is one model pretending to be five.
+- **Every 🤖 box is a separate API call**, not scripted logic — Planner,
+  Player, Judge, Navigator, and Chronicler are each configured
+  independently (provider + model, see Setup) and can run on different
+  models: a cheap one for a quick checkpoint, a stronger one for actual
+  play. Nothing here is one model pretending to be five.
 - **Judge and Navigator are permission-gated to read-only**, not just asked
   nicely — the tools that would move the character are never even
   registered for them, so calling one raises an error rather than being
