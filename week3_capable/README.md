@@ -30,7 +30,7 @@ references needed updating.
 
 Phase lettering continues from Week 2, which used A–F.
 
-## Phase G — orchestrator: Planner + Judge (built; not yet verified live)
+## Phase G — orchestrator: Planner + Judge (built; verified live)
 
 Full write-up:
 [`docs/plans/capability/week3_phase_g_orchestrator.md`](../docs/plans/capability/week3_phase_g_orchestrator.md).
@@ -104,12 +104,15 @@ free.
 **Tests:** `boukensha` 177 runs / 525 assertions, `mud_manager` 41 / 217,
 `mud_monitor` 71 / 249 — all green.
 
-**Not yet verified live.** The plumbing is proven offline against a real MCP
-server with the model call stubbed; no actual Planner or Judge API call has
-been made yet, so the two `prompts/*/system.md` files are still untested
-drafts. See the write-up's "Not yet done".
+**Verified live.** Two sessions against real CircleMUD (`localhost:4000`,
+`claude-haiku-4-5`, character `dummy`) exercised the full loop: session 2's
+second turn tripped `max_iterations`, the Judge was invoked regardless of its
+`every: 2` schedule (a tripped limit is always judged) and returned
+`replan`, and every `VERDICT:` line parsed correctly — no spurious `:flag`
+from the fail-closed default. See `docs/journal/3_capable.md` §8 for the run
+and its cost breakdown.
 
-## Phase H — knowledge as a query API (built; not yet verified live)
+## Phase H — knowledge as a query API (built; verified live)
 
 Full write-up:
 [`docs/plans/capability/week3_phase_h_knowledge.md`](../docs/plans/capability/week3_phase_h_knowledge.md).
@@ -146,10 +149,16 @@ the state block; a tool to re-ask would undo Phase D's zero-call revisits),
 and so does the Planner — Phase G made it toolless on purpose. Today it is
 the Judge's tool; Phase I's Navigator is the next caller.
 
+**Verified live.** The Judge called `world_knowledge` unprompted during the
+live session — `kind=overview` first, then `kind=room` on the room the plan
+concerned. The map built during play (4 rooms, 5 walked edges, 7 frontiers,
+with `x2`/`x3` revisit counts) confirms Phase D's zero-round-trip known-room
+path still fires under the new caller.
+
 **Tests:** `boukensha` 210 runs / 606 assertions, `mud_manager` 41 / 217,
 `mud_monitor` 71 / 249 — all green.
 
-## Phase I — Navigator subagent (built; not yet verified live)
+## Phase I — Navigator subagent (built; verified live — never invoked)
 
 Full write-up:
 [`docs/plans/capability/week3_phase_i_navigator.md`](../docs/plans/capability/week3_phase_i_navigator.md).
@@ -181,6 +190,14 @@ Enabling it needs both `tasks.navigator.enabled: true` *and* a knowledge
 store — without one its only tool doesn't exist, so it would be a model call
 guaranteed to answer "I don't know".
 
+**Verified live, but idle.** Available to the Player for two full sessions;
+called **zero** times. Every destination was an adjacent room the state
+block already named, so `world_knowledge(kind: route)` never lost the race.
+The tool description steered correctly — that's the design working, not the
+Player ignoring it — but it leaves the phase's justification an argument,
+not a finding: two sessions produced none of the cases (fuzzy destination,
+no known route, ambiguous name) it exists for.
+
 ```yaml
 tasks:
   navigator:
@@ -192,7 +209,7 @@ tasks:
 **Tests:** `boukensha` 225 runs / 651 assertions, `mud_manager` 41 / 217,
 `mud_monitor` 72 / 254 — all green.
 
-## Phase J — cross-session character memory (built; not yet verified live)
+## Phase J — cross-session character memory (built; verified live)
 
 Full write-up:
 [`docs/plans/capability/week3_phase_j_memory.md`](../docs/plans/capability/week3_phase_j_memory.md).
@@ -231,6 +248,11 @@ over a real one), `/exit`, EOF, and any Judge verdict that isn't `continue` —
 so a session killed mid-play still leaves memory behind. Repeated boundaries
 don't pay twice.
 
+**Verified live.** Session 1's digest was read back by session 2's Planner —
+merged rather than appended across the rewrite (1039 → 1324 chars,
+`Strategies` went from `_nothing yet_` to real content). The Player's own
+prompt never contained it, matching what the test asserts.
+
 ```yaml
 memory:
   enabled: true
@@ -242,8 +264,20 @@ memory:
 
 ## Status
 
-Phases G–J are all built and tested; **none has been verified live against a
-real model yet.** The plumbing is proven offline against real MCP servers,
-real SQLite, and real permissions — the prompts are untested drafts. See each
-phase's "Not yet done" section; the autonomous `Session.play` loop from
-Phase G also remains open.
+Phases G–J are all built, tested, and **verified live** against a real
+CircleMUD server — two sessions on `localhost:4000` with `claude-haiku-4-5`,
+character `dummy` (`docs/journal/3_capable.md` §8 has the full run and cost
+breakdown: $0.09999 combined, player $0.078 / judge $0.013 / chronicler
+$0.007 / planner $0.003). Planner, Judge, and Chronicler each did something
+live play couldn't do without them: the Judge tripped `max_iterations` on
+session 2's second turn and returned `replan`, and memory crossed the
+process boundary from session 1 into session 2's plan. The Navigator ran
+live too but was never called — every destination in both sessions was an
+adjacent room the state block already named — so its justification is
+argued and still untested by an actual case, not falsified.
+
+Two short sessions show the machinery works, not that it wins; whether an
+orchestrated agent plays *better* than Week 2's single agent is still
+unmeasured. The fully autonomous `Boukensha::Session.play` loop from Phase
+G's original spec remains open — the REPL wrapper shipped instead, keeping a
+human in the loop on this first outing.
