@@ -1,0 +1,364 @@
+{
+  "$schema_note": "Generated from MudManager::Mcp::ToolSpec — do not hand-edit.",
+  "mud_manager_version": "0.2.0",
+  "tools": {
+    "look": {
+      "description": "Look around the room, or at something specific.",
+      "args": {
+        "target": {
+          "type": "string"
+        },
+        "preposition": {
+          "type": "string",
+          "values": [
+            "in",
+            "at",
+            "north",
+            "east",
+            "south",
+            "west",
+            "up",
+            "down"
+          ]
+        }
+      }
+    },
+    "examine": {
+      "description": "Examine an object or person closely.",
+      "args": {
+        "target": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "check": {
+      "description": "Check your (or someone else's) condition.",
+      "args": {
+        "target": {
+          "type": "string"
+        }
+      }
+    },
+    "move": {
+      "description": "Move one step in a compass direction (or up/down).",
+      "args": {
+        "direction": {
+          "type": "string",
+          "values": [
+            "north",
+            "east",
+            "south",
+            "west",
+            "up",
+            "down"
+          ],
+          "required": true
+        }
+      }
+    },
+    "flee": {
+      "description": "Flee from combat in a random direction.",
+      "args": {}
+    },
+    "set_position": {
+      "description": "Change your posture (stand, sit, rest, sleep, wake).",
+      "args": {
+        "pos": {
+          "type": "string",
+          "values": [
+            "stand",
+            "sit",
+            "rest",
+            "sleep",
+            "wake"
+          ],
+          "required": true
+        }
+      }
+    },
+    "track": {
+      "description": "Track a victim's trail.",
+      "args": {
+        "victim": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "attack": {
+      "description": "Attack a target with the given style.",
+      "args": {
+        "style": {
+          "type": "string",
+          "values": [
+            "hit",
+            "murder",
+            "kill"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "skill_strike": {
+      "description": "Use a combat skill (backstab, bash, kick, rescue, assist) on a target.",
+      "args": {
+        "skill": {
+          "type": "string",
+          "values": [
+            "backstab",
+            "bash",
+            "kick",
+            "rescue",
+            "assist"
+          ],
+          "required": true
+        },
+        "target": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "consider": {
+      "description": "Size up a target before fighting it.",
+      "args": {
+        "target": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "say": {
+      "description": "Say, emote, or reply something locally.",
+      "args": {
+        "mode": {
+          "type": "string",
+          "values": [
+            "say",
+            "emote",
+            "reply"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "tell": {
+      "description": "Send a private message to another player.",
+      "args": {
+        "target": {
+          "type": "string",
+          "required": true
+        },
+        "text": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "channel_say": {
+      "description": "Speak on a global channel.",
+      "args": {
+        "channel": {
+          "type": "string",
+          "values": [
+            "shout",
+            "gossip",
+            "auction",
+            "grats",
+            "holler"
+          ],
+          "required": true
+        },
+        "text": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "get_item": {
+      "description": "Pick up an item, optionally from a container.",
+      "args": {
+        "obj": {
+          "type": "string",
+          "required": true
+        },
+        "container": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer"
+        }
+      }
+    },
+    "drop_item": {
+      "description": "Drop, donate, or junk an item.",
+      "args": {
+        "mode": {
+          "type": "string",
+          "values": [
+            "drop",
+            "donate",
+            "junk"
+          ]
+        },
+        "obj": {
+          "type": "string",
+          "required": true
+        },
+        "count": {
+          "type": "integer"
+        }
+      }
+    },
+    "put_item": {
+      "description": "Put an item into a container.",
+      "args": {
+        "obj": {
+          "type": "string",
+          "required": true
+        },
+        "container": {
+          "type": "string",
+          "required": true
+        },
+        "count": {
+          "type": "integer"
+        }
+      }
+    },
+    "equip_item": {
+      "description": "Wear, wield, hold, grab, or remove an item.",
+      "args": {
+        "op": {
+          "type": "string",
+          "values": [
+            "wear",
+            "wield",
+            "grab",
+            "hold",
+            "remove"
+          ],
+          "required": true
+        },
+        "obj": {
+          "type": "string",
+          "required": true
+        },
+        "body_loc": {
+          "type": "string"
+        }
+      }
+    },
+    "consume_item": {
+      "description": "Eat, taste, drink, or sip something.",
+      "args": {
+        "mode": {
+          "type": "string",
+          "values": [
+            "eat",
+            "taste",
+            "drink",
+            "sip"
+          ],
+          "required": true
+        },
+        "obj": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "cast_spell": {
+      "description": "Cast a spell, optionally at a target.",
+      "args": {
+        "spell": {
+          "type": "string",
+          "required": true
+        },
+        "target": {
+          "type": "string"
+        }
+      }
+    },
+    "use_magic_item": {
+      "description": "Use, quaff, or recite a magic item.",
+      "args": {
+        "mode": {
+          "type": "string",
+          "values": [
+            "use",
+            "quaff",
+            "recite"
+          ],
+          "required": true
+        },
+        "item": {
+          "type": "string",
+          "required": true
+        },
+        "target_args": {
+          "type": "string"
+        }
+      }
+    },
+    "shop": {
+      "description": "Interact with a shopkeeper: buy, sell, list, value, or offer.",
+      "args": {
+        "op": {
+          "type": "string",
+          "values": [
+            "buy",
+            "sell",
+            "list",
+            "value",
+            "offer"
+          ],
+          "required": true
+        },
+        "args": {
+          "type": "string"
+        }
+      }
+    },
+    "practice": {
+      "description": "Practice a skill, or list practicable skills if none given.",
+      "args": {
+        "skill": {
+          "type": "string"
+        }
+      }
+    },
+    "save_character": {
+      "description": "Save your character to disk.",
+      "args": {}
+    },
+    "send_raw": {
+      "description": "Send a raw command line directly to the MUD, bypassing the typed primitives. Escape hatch.",
+      "args": {
+        "raw": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    "inspect": {
+      "description": "Look at the room and list its exits (with destination room names) in one call. Use this in a new room instead of looking and checking exits separately.",
+      "args": {}
+    },
+    "poll": {
+      "description": "Return any buffered output that arrived since the last command, without sending anything.",
+      "args": {}
+    },
+    "mud_status": {
+      "description": "Report whether the daemon currently has a live session with the MUD.",
+      "args": {}
+    }
+  }
+}

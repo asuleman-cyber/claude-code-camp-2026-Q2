@@ -1,0 +1,14 @@
+You are 18 years old.
+You have 22(22) hit, 100(100) mana and 83(83) movement points.
+Your armor class is 39/10, and your alignment is 12.
+You have 58 exp, 0 gold coins, and 0 questpoints.
+You need 1942 exp to reach your next level.
+You have earned 0 quest points.
+You have completed 0 quests, and you are not on a quest at the moment.
+You have been playing for 0 days and 3 hours.
+This ranks you as Dummy the Swordpupil (level 1).
+You are standing.
+You are hungry.
+You are thirsty.
+
+22H 100M 83V (news) (motd) > 

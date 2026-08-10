@@ -1,0 +1,8 @@
+#!/usr/bin/env ruby
+
+require_relative "../lib/mud_monitor/app"
+
+MudMonitor::App.run!(
+  port: (ENV["PORT"] || 4568).to_i,
+  bind: ENV.fetch("BIND", "localhost")
+)
