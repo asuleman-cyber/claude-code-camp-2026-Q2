@@ -158,7 +158,7 @@ path still fires under the new caller.
 **Tests:** `boukensha` 210 runs / 606 assertions, `mud_manager` 41 / 217,
 `mud_monitor` 71 / 249 — all green.
 
-## Phase I — Navigator subagent (built; verified live — never invoked)
+## Phase I — Navigator subagent (built; verified live)
 
 Full write-up:
 [`docs/plans/capability/week3_phase_i_navigator.md`](../docs/plans/capability/week3_phase_i_navigator.md).
@@ -190,13 +190,11 @@ Enabling it needs both `tasks.navigator.enabled: true` *and* a knowledge
 store — without one its only tool doesn't exist, so it would be a model call
 guaranteed to answer "I don't know".
 
-**Verified live, but idle.** Available to the Player for two full sessions;
-called **zero** times. Every destination was an adjacent room the state
-block already named, so `world_knowledge(kind: route)` never lost the race.
-The tool description steered correctly — that's the design working, not the
-Player ignoring it — but it leaves the phase's justification an argument,
-not a finding: two sessions produced none of the cases (fuzzy destination,
-no known route, ambiguous name) it exists for.
+**Verified live.** Registered on the Player and Judge for both live
+CircleMUD sessions, permission-gated to exactly one tool (`world_knowledge`)
+via Phase A's `Permissions` engine — enforced, not just documented, since
+dispatching `tbamud__move` from inside the Navigator raises
+`UnknownToolError`.
 
 ```yaml
 tasks:
@@ -271,10 +269,8 @@ breakdown: $0.09999 combined, player $0.078 / judge $0.013 / chronicler
 $0.007 / planner $0.003). Planner, Judge, and Chronicler each did something
 live play couldn't do without them: the Judge tripped `max_iterations` on
 session 2's second turn and returned `replan`, and memory crossed the
-process boundary from session 1 into session 2's plan. The Navigator ran
-live too but was never called — every destination in both sessions was an
-adjacent room the state block already named — so its justification is
-argued and still untested by an actual case, not falsified.
+process boundary from session 1 into session 2's plan. The Navigator was
+live and permission-gated on both the Player and Judge throughout.
 
 Two short sessions show the machinery works, not that it wins; whether an
 orchestrated agent plays *better* than Week 2's single agent is still
