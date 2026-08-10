@@ -61,6 +61,54 @@ the Planner, Player, Judge, and Chronicler — see
 [`week3_capable/README.md`](week3_capable/README.md) for the full technical
 write-up.)*
 
+## Architecture, for a closer look
+
+The diagram above is the mental model; this is the same loop with the
+actual components involved — for reviewers who want to see the shape of the
+system without reading source yet:
+
+```mermaid
+flowchart TD
+    Input(["Human turn input"]) --> PlanGate{"Plan needed?"}
+    PlanGate -->|"yes"| Planner[["Planner<br/>writes goal + steps<br/>(no tools)"]]
+    PlanGate -->|"no"| Player
+    Planner --> Player
+
+    subgraph Turn["Player turn"]
+        direction TB
+        Player[["Player"]] -->|"game commands"| MUD[("mud-manager<br/>MCP server")]
+        Player -->|"room / route lookups"| KB[("Knowledge store<br/>room map")]
+        Player -->|"fuzzy destination"| Navigator[["Navigator<br/>(read-only)"]]
+        MUD --> Player
+        KB --> Player
+        Navigator --> Player
+    end
+
+    Player --> Judge[["Judge<br/>checkpoint<br/>(read-only)"]]
+    Judge -->|"continue"| Player
+    Judge -->|"replan"| PlanGate
+    Judge -->|"flag"| Human(["Human review"])
+    Judge --> Chronicler[["Chronicler<br/>(no tools)"]]
+    Chronicler --> Memory[("Player memory<br/>digest")]
+    Memory -.->|"read back next session"| Planner
+```
+
+A few things worth knowing at a glance:
+
+- **Judge and Navigator are permission-gated to read-only**, not just asked
+  nicely — the tools that would move the character are never even
+  registered for them, so calling one raises an error rather than being
+  refused.
+- **The knowledge store is one shared, in-process database**, not a second
+  server — Player, Judge, and Navigator all query the same live room map,
+  so nothing goes stale between roles.
+- **Memory only reaches the Player through the Planner**, once per session
+  boundary — never mid-turn, and never through the Player's own tools.
+
+This intentionally leaves out session-compaction details, permission
+internals, and file-level wiring — see
+[`week3_capable/README.md`](week3_capable/README.md) for those.
+
 ## Want to go deeper?
 
 | Path | What's there |
