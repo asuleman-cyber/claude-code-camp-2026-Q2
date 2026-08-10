@@ -125,6 +125,50 @@ This intentionally leaves out session-compaction details, permission
 internals, and file-level wiring — see
 [`week3_capable/README.md`](week3_capable/README.md) for those.
 
+<details>
+<summary>A real run (captured 2026-08-10, against a live CircleMUD server — $0.02, not staged)</summary>
+
+```text
+$ boukensha --no-tui
+boukensha> Look around, then try moving in one direction, and tell me what you find.
+
+[planner]
+Objective: Scout the immediate area to understand the current location and
+available exits.
+Steps: 1. Look around the current room. 2. Move in the safest-looking
+direction. 3. Look around the new room and report back.
+Stop when: You have moved to an adjacent room and reported what you found.
+
+Excellent! I've moved north and found The Great Field Of Midgaard. Here's
+what I discovered:
+
+Current Location: The Great Field Of Midgaard
+Exits: Only south (back to where I came from)
+Description: A beautiful, peaceful countryside with a wide dirt path, lush
+green grass, oak trees, and birds.
+Obstacle: The path north is blocked — no way around it.
+
+Shall I head back south and try a different direction?
+boukensha> /exit
+[chronicler] memory updated for dummy.
+Goodbye.
+```
+
+Two Player turns, two Judge checkpoints (both `continue`), one real memory
+digest written on `/exit`:
+
+```markdown
+## Discoveries
+Started in The Great Field Of Midgaard, a peaceful countryside with wide
+dirt path, lush grass, oak trees. Exits: south to Midgaard city. North is
+blocked... Only safe exit is south back toward the city.
+
+## Open threads
+Explore south toward Midgaard city to find NPCs, shops, or other areas.
+```
+
+</details>
+
 ## Want to go deeper?
 
 | Path | What's there |
@@ -242,6 +286,11 @@ tasks:
     model:    claude-haiku-4-5
     enabled:  true
     every:    3        # check in every 3rd turn
+  chronicler:
+    provider: anthropic
+    model:    claude-haiku-4-5   # required whenever memory is on — Remember
+                                  # has no `enabled:` flag of its own, but
+                                  # still needs a model to call
 
 memory:
   enabled: true
