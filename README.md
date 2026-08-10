@@ -38,7 +38,7 @@ flowchart LR
     B --> C{"🔍 Check<br/>is this working?"}
     C -->|"yes, keep going"| B
     C -->|"not really — rethink"| A
-    C -->|"session ends"| D["📝 Remember<br/>write down what<br/>was learned"]
+    B -.->|"when a session<br/>wraps up"| D["📝 Remember<br/>write down what<br/>was learned"]
     D -.->|"read back in<br/>next session"| A
 ```
 
@@ -47,10 +47,12 @@ flowchart LR
 - **Play** — it reads the room, decides what to type, and sends it — over
   and over, like a person playing the game turn by turn.
 - **Check** — periodically, a second "reviewer" role looks at what just
-  happened and decides: keep going, rethink the plan, or stop and flag a
-  human.
-- **Remember** — once a play session ends, the agent writes itself a short
-  note about what it learned, so it isn't starting from scratch next time.
+  happened and decides: keep going, or rethink the plan. It can also raise
+  a flag for a human to see — play continues either way, the flag is just a
+  note that something looked off.
+- **Remember** — when a play session wraps up, or the plan changes, the
+  agent writes itself a short note about what it learned, so it isn't
+  starting from scratch next time.
 
 Each of those four roles is deliberately limited to only what its job needs
 — the reviewer can't move the character, for instance — which is what makes
@@ -77,18 +79,22 @@ flowchart TD
     subgraph Turn["Player turn"]
         direction TB
         Player[["Player"]] -->|"game commands"| MUD[("mud-manager<br/>MCP server")]
-        Player -->|"room / route lookups"| KB[("Knowledge store<br/>room map")]
         Player -->|"fuzzy destination"| Navigator[["Navigator<br/>(read-only)"]]
         MUD --> Player
-        KB --> Player
         Navigator --> Player
     end
 
     Player --> Judge[["Judge<br/>checkpoint<br/>(read-only)"]]
-    Judge -->|"continue"| Player
-    Judge -->|"replan"| PlanGate
-    Judge -->|"flag"| Human(["Human review"])
-    Judge --> Chronicler[["Chronicler<br/>(no tools)"]]
+    Judge -.->|"room / route lookups"| KB[("Knowledge store<br/>room map")]
+    Judge -.->|"fuzzy destination"| Navigator
+    Navigator -.->|"room / route lookups"| KB
+
+    Judge -->|"continue"| Input
+    Judge -->|"replan"| Input
+    Judge -->|"flag (warns; play continues)"| Input
+    Judge -->|"replan or flag"| Chronicler[["Chronicler<br/>(no tools)"]]
+
+    Boundary(["/exit, /clear, EOF —<br/>independent of the Judge"]) --> Chronicler
     Chronicler --> Memory[("Player memory<br/>digest")]
     Memory -.->|"read back next session"| Planner
 ```
@@ -100,10 +106,14 @@ A few things worth knowing at a glance:
   registered for them, so calling one raises an error rather than being
   refused.
 - **The knowledge store is one shared, in-process database**, not a second
-  server — Player, Judge, and Navigator all query the same live room map,
-  so nothing goes stale between roles.
-- **Memory only reaches the Player through the Planner**, once per session
-  boundary — never mid-turn, and never through the Player's own tools.
+  server — the Judge and Navigator both query the same live room map. The
+  Player never needs to: room info is already pushed into its context every
+  turn for free, so a tool to re-ask would just be a round trip to learn
+  nothing.
+- **Memory only reaches the Player through the Planner**, and only gets
+  written on a `replan`/`flag` verdict or a session boundary (`/exit`,
+  `/clear`, EOF) — never on a plain `continue`, and never through the
+  Player's own tools.
 
 This intentionally leaves out session-compaction details, permission
 internals, and file-level wiring — see
@@ -142,7 +152,24 @@ gem install ./boukensha-*.gem
 
 `week3_capable/bin/rebuild` does both steps for you, in this order.
 
-### 2. `.boukensha/settings.yaml` (repo root, shared across weeks)
+### 2. Point `boukensha` at this repo's config
+
+By default `boukensha` looks for its config in `~/.boukensha`, not the
+repo. Point it at the repo-root `.boukensha/` instead — either per shell
+session:
+
+```sh
+export BOUKENSHA_DIR="$(pwd)/.boukensha"   # run from the repo root
+```
+
+or once, in `~/.boukensharc`:
+
+```yaml
+boukensha_dir: /absolute/path/to/this/repo/.boukensha
+```
+
+Either way, this is the `.boukensha/settings.yaml` (shared across weeks)
+that then actually gets read:
 
 ```yaml
 tasks:
