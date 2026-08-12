@@ -83,8 +83,22 @@ Two sessions, real CircleMUD on `localhost:4000`, `claude-haiku-4-5`, character 
 - Map built during play: 4 rooms, 5 walked edges, 7 frontiers, with `x2`/`x3` revisit counts confirming the room-graph store's zero-round-trip known-room path still fires.
 - Memory crossed the process boundary — session 1's digest read back by session 2's Planner; Player's prompt had the plan, not the memory. Merged rather than appended across two rewrites (1039 → 1324 chars, `Strategies` went from `_nothing yet_` to real content).
 - Cost: **$0.09999** both sessions — player $0.078, judge $0.013, chronicler $0.007, planner $0.003. Orchestration ~22% of spend at `every: 2`.
+- Put a number next to that $0.09999 by running the same fixed task twice — same character, same starting room (the Temple of Midgaard), same instruction (`go to bakery`) — once with every extra role off, once with all four on:
 
-> The checkpoint hypothesis survived its first real test. `kind=route` and the `:flag` verdict have still never fired in the wild.
+  | | Baseline (Player only) | Orchestrated (all four) | Delta |
+  |---|---|---|---|
+  | Turns | 1 | 1 | — |
+  | Player iterations | 14 | 13 | — |
+  | Total tokens | 63,687 | 77,206 | +21% |
+  | Cost | $0.0687 | $0.0866 | +26% |
+  | Judge verdicts | — | 1 (`continue`) | — |
+  | Replans | — | 0 | — |
+  | Reached the bakery? | No | No | — |
+
+- Neither run finished the task — both burned their whole turn-token budget exploring, one past the east gate, the other through the temple grounds. The 26% didn't buy a finished task; it bought a Judge that, following up on the Navigator's own suggested lead, caught the lead pointing at a room the character had already visited.
+- Caveat on the comparison: the orchestrated run's knowledge store wasn't perfectly blank — 6 rooms carried over from an aborted first attempt, where a missing `tasks.chronicler.model` in *that* attempt's settings made the Chronicler fail closed before it could finish. Not a blank slate like the baseline's, though the run still explored past that patch into new territory either way.
+
+> The checkpoint hypothesis survived its first real test. Measured against a bare baseline on the same task, orchestration cost 26% more and neither version finished — but the 26% bought a Judge that caught its own Navigator repeating a lead the character had already tried. `kind=route` and the `:flag` verdict have still never fired in the wild.
 
 ### 9. Two logging bugs, and the second was older than this week (found debugging the orchestrator and knowledge API)
 - `run_planner`/`run_chronicler` call `Client#call` directly, and `Logger#prompt` only fires inside `Agent#run` — so the two roles whose behaviour is entirely determined by their input were the two whose input never reached the log. Confirming the Planner got the memory digest needed a separate script.
@@ -97,18 +111,26 @@ Two sessions, real CircleMUD on `localhost:4000`, `claude-haiku-4-5`, character 
 
 **Scope note:** `Boukensha::Session.play` — the fully autonomous outer loop — was specified and not built. The plan offered it *or* a wrapper around the existing `Repl`, and the REPL wrapper shipped: a component whose whole job is deciding when to stop should keep a human in the loop on its first outing. Still open. So is whether the Chronicler over-forgets; both rewrites observed grew the digest and dropped nothing important, which is the easy case.
 
+### 10. The Navigator fired — twice, and mostly not for the Player it was built for (Navigator, live)
+- Went back to force the case Observation 6 said never came up: wiped the local map, then gave the Player a destination that isn't a room name (`find somewhere in town that sells bread`, zero prior knowledge of the map). It still didn't fire — the Player reached The Bakery in eleven plain moves, reading only its own state block's frontier markers, never touching `consult_navigator` or `world_knowledge` at all.
+- A second attempt with a flatter instruction (`go to bakery`) got a different result: the Player called `consult_navigator` as its very first action, before making a single move, and got a real answer back — the bakery had never been visited, try Temple Square first — and used it.
+- The same scenario, rerun a few minutes later, didn't repeat that. The Player went straight to moving and asking NPCs again; this time it was the **Judge** that called `consult_navigator` mid-checkpoint, and it caught something real — the Navigator's own suggested direction (Market Square) had already been visited.
+- Across five sessions now — the original two, plus these three — `consult_navigator` has fired three times total, in two of the five, under otherwise identical settings: once from the Player, twice from the Judge.
+
+> Not the tidy "never called" story Observation 6 told, and not a confirmed pattern either — nothing distinguishes the one session where the Player reached for it from the two where it didn't. What is clear is which caller actually used it more: the Judge, checking a plan, not the Player it was designed for.
+
 ## Technical Conclusions
-- Three of four roles earned their place — Planner, Judge, Chronicler each did something one agent couldn't. The Navigator was offered twice and never invoked.
+- Three of four roles earned their place outright — Planner, Judge, Chronicler each did something one agent couldn't. The Navigator took five sessions to get used at all, and got used more by the Judge checking a plan than by the Player it was built for.
 - Specialisation was about removing options, not adding capability: read-only Judge, immobile Navigator, toolless Chronicler. The constraint is what made each trustworthy.
 - `Permissions` — built Week 2, never switched on — turned out to be what the whole week rested on. Three of four roles are defined by their allowlist.
 - Where a thing survives mattered more than what it does: plan in the system prompt, state block never stored, digest rewritten not appended, subagent context never touching its caller's.
 - Orchestration cost ~22% of spend for plan persistence, one course correction, and durable memory — and was only measurable per-role because `task:` got threaded through the logger.
 - Reuse beat porting: the room-graph store, the Permissions engine, and `RunDSL#dispatch` — all built in Week 2 — carried the Planner, Judge, and Navigator. Cross-session memory was the only genuinely new thing underneath.
-- Two short sessions show the machinery works, not that it wins. Whether an orchestrated agent *plays better* is still unmeasured.
+- Two short sessions show the machinery works, not that it wins. A same-task before/after put a number on the cost — 26% more, for one Judge catch on a run that didn't finish either way — but one comparison isn't enough to say whether an orchestrated agent *plays better*.
 
 ## Key Takeaway
 - **A plan is only as good as the place you put it.** The most consequential decision of the week wasn't adding a Planner it was noticing that a plan stored as a message gets silently deleted by the compactor, and that the system prompt is the only part of the context nothing evicts.
-- **Building a capability is not the same as needing it.** The Navigator is the best-argued component of the week, bounded, isolated, permission-gated, justified in writing against a deterministic alternative — and the agent never once asked it anything. The argument was sound and the thing may still be unnecessary.
+- **Building a capability is not the same as needing it — and "never" turned out to be provisional.** The Navigator is the best-argued component of the week, bounded, isolated, permission-gated, justified in writing against a deterministic alternative. Across the first two live sessions the agent never once asked it anything; three more sessions built specifically to force the case moved that to three calls in five — mostly from the Judge, not the Player it was designed for. The argument was sound; whether the thing is *reliably* necessary is still open.
 - **A checkpoint is only worth its cost if it can disagree.** The Judge returned `replan` on its first real opportunity. Had it only ever said `continue`, ~13% of spend would have bought nothing.
 - **Constraints, not capabilities, made the roles trustworthy.** Every role that worked was defined by what it couldn't do, and the gate enforcing that had been sitting unused since Week 2.
 - **A wrong renderer can be right-looking for months.** The state block rendered as user input since the room-graph store shipped, through every test suite, because the data was real but just not what it was labelled. Tests asserted the parser's output, never its meaning.
