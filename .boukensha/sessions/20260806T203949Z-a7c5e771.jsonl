@@ -1,0 +1,1 @@
+{"phase":"session_start","max_iterations":25,"max_turn_tokens":60000,"max_output_tokens":1024,"context_window":200000,"model":"claude-haiku-4-5","provider":"anthropic","session_id":"20260806T203949Z-a7c5e771","at":"2026-08-06T21:39:49.942+01:00","mono_ms":81656717}
